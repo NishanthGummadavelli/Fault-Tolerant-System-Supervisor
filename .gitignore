@@ -30,3 +30,11 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Runtime databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local runtime data
+data/
