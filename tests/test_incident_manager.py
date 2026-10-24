@@ -6,19 +6,11 @@ Stage 3.3: Incident Detection Tests
 Test incident creation, escalation, correlation, and recovery
 using simulated health-check results.
 """
-
-import sys
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 
-# Make the monitoring directory importable when running this test file.
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MONITORING_DIR = PROJECT_ROOT / "monitoring"
-sys.path.insert(0, str(MONITORING_DIR))
-
-from health_monitor import HealthStatus
-from incident_manager import (
+from monitoring.health_monitor import HealthStatus
+from monitoring.incident_manager import (
     IncidentCategory,
     IncidentManager,
     IncidentSeverity,

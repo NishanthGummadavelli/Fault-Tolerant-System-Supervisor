@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 
-from health_monitor import HealthStatus
+from monitoring.health_monitor import HealthStatus
 
 
 class IncidentStatus(str, Enum):
