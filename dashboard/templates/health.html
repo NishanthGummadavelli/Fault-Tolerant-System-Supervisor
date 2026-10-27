@@ -1,0 +1,30 @@
+{% extends layout %}
+{% from "_macros.html" import page_header, checks_table, pager, select, chart, transitions_table %}
+{% block title %}Health history{% endblock %}
+{% block header %}
+{{ page_header('Health history', 'Every recorded health check, newest first. Filters are applied to stored records.') }}
+<form class="filters" method="get" action="{{ url_for('dashboard.health') }}">
+  {{ select('service_id', 'Service', service_options, request.args.get('service_id', '')) }}
+  {{ select('state', 'Health state', states, request.args.get('state', '')|upper) }}
+  {{ select('category', 'Type', categories, request.args.get('category', '')|upper) }}
+  <label>Time range <select name="range">{% for r in ranges %}<option value="{{ r }}" {% if request.args.get('range', '24h') == r %}selected{% endif %}>{{ 'All time' if r == 'all' else 'Last ' ~ r }}</option>{% endfor %}</select></label>
+  <label>HTTP status <input type="number" name="status_code" min="100" max="599" value="{{ request.args.get('status_code', '') }}"></label>
+  <label>Error type <input type="text" name="error_type" maxlength="64" value="{{ request.args.get('error_type', '') }}"></label>
+  <label>Per page <select name="per_page">{% for n in (10, 25, 50, 100) %}<option value="{{ n }}" {% if request.args.get('per_page', '25') == n|string %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  <button class="btn" type="submit">Apply</button> <a class="btn btn--ghost" href="{{ url_for('dashboard.health') }}">Reset</a>
+</form>
+{% endblock %}
+{% block live %}
+<section class="grid grid--charts">
+  <div class="card card--wide"><h2>Response time ({{ chart_range_key }})</h2><p class="muted">Successful (2xx) responses only; failures are marked, not plotted as zero. Charts follow the service filter{% if request.args.get('range') in ('30d', 'all') %} and show the last 7 days{% endif %}.</p>
+    {{ chart('timeseries', response_chart, 'Response time over time') }}</div>
+  <div class="card"><h2>Availability ({{ chart_range_key }})</h2><p class="muted">2xx responses &divide; all checks.</p>
+    {{ chart('hbars', availability_chart, 'Availability per service') }}</div>
+  <div class="card card--wide"><h2>Healthy, degraded and unhealthy checks</h2>
+    {{ chart('stackedbars', history_chart, 'Checks per period by health state') }}</div>
+</section>
+<section class="card"><h2>Failures and recoveries</h2>{{ transitions_table(transitions) }}</section>
+<section class="card">
+  <p class="muted">&ldquo;No response&rdquo; means the request failed before any HTTP response, so its elapsed time is not shown as a response time.</p>
+  {{ checks_table(result['items']) }}{{ pager(pg) }}</section>
+{% endblock %}

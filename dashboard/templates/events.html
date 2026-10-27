@@ -1,0 +1,23 @@
+{% extends layout %}
+{% from "_macros.html" import page_header, pager, select, empty %}
+{% block title %}Event history{% endblock %}
+{% block header %}
+{{ page_header('Event history', 'Incident lifecycle events recorded by the supervisor: created, updated, escalated, resolved.') }}
+<form class="filters" method="get" action="{{ url_for('dashboard.events') }}">
+  {{ select('event_type', 'Event type', event_types, request.args.get('event_type', '')|upper) }}
+  {{ select('service_id', 'Service', service_options, request.args.get('service_id', '')) }}
+  <button class="btn" type="submit">Apply</button> <a class="btn btn--ghost" href="{{ url_for('dashboard.events') }}">Reset</a>
+</form>
+{% endblock %}
+{% block live %}
+<section class="card">
+{% if result['items'] %}<div class="table-wrap"><table><thead><tr><th scope="col">Time (UTC)</th><th scope="col">Incident</th><th scope="col">Service</th><th scope="col">Event</th><th scope="col">Change</th><th scope="col">Description</th></tr></thead><tbody>
+  {% for e in result['items'] %}<tr><td>{{ e.timestamp|display_time }}</td>
+    <td><a href="{{ url_for('dashboard.incident_detail', incident_id=e.incident_id) }}">{{ e.incident_id }}</a></td>
+    <td><a href="{{ url_for('dashboard.service_detail', service_id=e.service_id) }}">{{ e.service_name }}</a></td>
+    <td><strong>{{ e.event_type }}</strong></td>
+    <td>{% if e.previous_severity and e.previous_severity != e.new_severity %}{{ e.previous_severity }} → {{ e.new_severity }}{% elif e.previous_status and e.previous_status != e.new_status %}{{ e.previous_status }} → {{ e.new_status }}{% else %}{{ e.new_severity or '—' }}{% endif %}</td>
+    <td class="wrap">{{ e.description }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}{{ empty('No incident events recorded.') }}{% endif %}
+{{ pager(pg) }}</section>
+{% endblock %}

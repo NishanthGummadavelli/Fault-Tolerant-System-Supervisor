@@ -1,0 +1,23 @@
+{% extends layout %}
+{% from "_macros.html" import page_header, incidents_table, pager, select %}
+{% block title %}Incidents{% endblock %}
+{% block header %}
+{{ page_header('Incidents', 'Open and critical incidents first. Repeat observations are grouped into one incident rather than raised as new alerts.') }}
+<form class="filters" method="get" action="{{ url_for('dashboard.incidents') }}">
+  <label>Search <input type="search" name="q" value="{{ request.args.get('q', '') }}" maxlength="80" placeholder="ID, summary or service"></label>
+  {{ select('severity', 'Severity', severities, request.args.get('severity', '')|upper) }}
+  {{ select('status', 'Status', statuses, request.args.get('status', '')|upper) }}
+  {{ select('category', 'Category', categories, request.args.get('category', '')|upper) }}
+  {{ select('service_id', 'Service', service_options, request.args.get('service_id', '')) }}
+  <label>First detected <select name="range">{% for r in ranges %}<option value="{{ r }}" {% if request.args.get('range', 'all') == r %}selected{% endif %}>{{ 'Any time' if r == 'all' else 'Last ' ~ r }}</option>{% endfor %}</select></label>
+  <label>From <input type="date" name="date_from" value="{{ request.args.get('date_from', '') }}"></label>
+  <label>To <input type="date" name="date_to" value="{{ request.args.get('date_to', '') }}"></label>
+  <label>Sort <select name="sort">{% for s in sorts %}<option value="{{ s }}" {% if request.args.get('sort', 'priority') == s %}selected{% endif %}>{{ s.title() }}</option>{% endfor %}</select></label>
+  <button class="btn" type="submit">Apply</button> <a class="btn btn--ghost" href="{{ url_for('dashboard.incidents') }}">Reset</a>
+</form>
+{% endblock %}
+{% block live %}
+<section class="card">
+  {% if totals.incidents %}<p class="muted">{{ totals.open_count }} open of {{ totals.incidents }} incident(s) in total; {{ totals.occurrences }} recorded occurrence(s) are grouped into them. Dates filter on first-seen time (UTC).</p>{% endif %}
+  {{ incidents_table(result['items']) }}{{ pager(pg) }}</section>
+{% endblock %}

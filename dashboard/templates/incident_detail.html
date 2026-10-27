@@ -1,0 +1,48 @@
+{% extends layout %}
+{% from "_macros.html" import badge, page_header, checks_table, diagnosis_card %}
+{% set i = d.incident %}
+{% block title %}{{ i.incident_id }}{% endblock %}
+{% block header %}
+{{ page_header('Incident ' ~ i.incident_id, i.service_name ~ ' · ' ~ i.category|replace('_', ' ')|title) }}
+<p><a href="{{ url_for('dashboard.incidents') }}">&larr; All incidents</a></p>
+{% endblock %}
+{% block live %}
+{% if i.status == 'RESOLVED' %}
+<p class="alert alert--ok" role="status">Resolved at {{ i.resolved_at|display_time }} after {{ i.duration_seconds|duration }}.</p>
+{% elif d.service_state in ('STALE', 'NO_DATA') %}
+<p class="alert alert--warn" role="status">Marked open, but this service has no recent health checks, so the failure is <strong>unverified</strong>. The incident may be left over from a stopped supervisor.</p>
+{% else %}
+<p class="alert alert--error" role="status">Ongoing. The service's latest recorded state is {{ d.service_state|replace('_', ' ')|lower }}; open for {{ i.duration_seconds|duration }}.</p>
+{% endif %}
+<section class="grid grid--two">
+  <div class="card"><h2>Details</h2><dl class="facts">
+    <dt>Severity</dt><dd>{{ badge(i.severity) }}</dd>
+    <dt>Status</dt><dd>{{ badge(i.status) }}</dd>
+    <dt>Service</dt><dd><a href="{{ url_for('dashboard.service_detail', service_id=i.service_id) }}">{{ i.service_name }}</a><br><span class="muted">{{ i.service_url }}</span></dd>
+    <dt>Category</dt><dd>{{ i.category|replace('_', ' ')|title }}</dd>
+    <dt>First seen</dt><dd>{{ i.created_at|display_time }}</dd>
+    <dt>Last updated</dt><dd>{{ i.last_updated_at|display_time }}</dd>
+    <dt>Resolved</dt><dd>{{ i.resolved_at|display_time }}</dd>
+    <dt>Duration</dt><dd>{{ i.duration_seconds|duration }}</dd>
+    <dt>Occurrences</dt><dd>{{ i.occurrences }}</dd>
+    <dt>Lifecycle events</dt><dd>{{ i.event_count }}</dd>
+    <dt>Latest observed failure</dt><dd>{% if d.latest_failure %}{{ d.latest_failure.failure_label or 'Failure' }}{% if d.latest_failure.status_code is not none %} (HTTP {{ d.latest_failure.status_code }}){% endif %}<br><span class="muted">{{ d.latest_failure.timestamp|display_time }}</span>{% else %}—{% endif %}</dd>
+    <dt>Summary</dt><dd>{{ i.summary }}</dd></dl></div>
+  <div class="card"><h2>Why this incident exists</h2>
+    <ul><li>{{ d.explanation.why_opened }}</li><li>{{ d.explanation.grouping }}</li><li>{{ d.explanation.closing }}</li></ul>
+    <p class="muted">{{ d.explanation.rules_note }}</p></div>
+</section>
+<section class="card">{{ diagnosis_card('Diagnosis from related evidence', d.diagnosis, 'selected from the most recent non-healthy related check') }}</section>
+<section class="card"><h2>Lifecycle</h2>
+  <div class="table-wrap"><table><thead><tr><th scope="col">Time (UTC)</th><th scope="col">Event</th><th scope="col">Severity</th><th scope="col">Status</th><th scope="col">Description</th></tr></thead><tbody>
+  {% for e in d.events %}<tr><td>{{ e.timestamp|display_time }}</td><td><strong>{{ e.event_type }}</strong></td>
+    <td>{{ (e.previous_severity ~ ' → ' ~ e.new_severity) if e.previous_severity and e.previous_severity != e.new_severity else (e.new_severity or '—') }}</td>
+    <td>{{ (e.previous_status ~ ' → ' ~ e.new_status) if e.previous_status and e.previous_status != e.new_status else (e.new_status or '—') }}</td>
+    <td class="wrap">{{ e.description }}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty-cell">No lifecycle events recorded.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+<section class="card"><h2>Evidence: related health checks</h2>
+  <p class="muted">The database does not link checks to incidents directly. These are the service's checks selected by time: the last five at or before detection, then those recorded while the incident was active.</p>
+  <h3>Before and at detection</h3>{{ checks_table(d.lead_in, false) }}
+  <h3>While active</h3>{{ checks_table(d.during, false) }}</section>
+{% endblock %}

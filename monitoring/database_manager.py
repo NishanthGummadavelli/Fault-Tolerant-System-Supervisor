@@ -135,6 +135,9 @@ class DatabaseManager:
 
                     error TEXT,
                     error_type TEXT,
+                    diagnosis TEXT,
+                    likely_cause TEXT,
+                    recommendation TEXT,
 
                     FOREIGN KEY (service_id)
                         REFERENCES services(service_id)
@@ -205,6 +208,30 @@ class DatabaseManager:
                 )
             """)
 
+            # Add diagnosis columns to databases created by earlier versions.
+            # SQLite has no ADD COLUMN IF NOT EXISTS, so inspect the schema.
+            health_check_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(health_checks)")
+            }
+            for column_name in ("diagnosis", "likely_cause", "recommendation"):
+                if column_name not in health_check_columns:
+                    connection.execute(
+                        f"ALTER TABLE health_checks ADD COLUMN {column_name} TEXT"
+                    )
+
+            # Record who registered each service. Existing rows keep the
+            # default, so older databases migrate without data loss.
+            service_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(services)")
+            }
+            if "monitoring_source" not in service_columns:
+                connection.execute(
+                    "ALTER TABLE services ADD COLUMN monitoring_source "
+                    "TEXT NOT NULL DEFAULT 'supervisor'"
+                )
+
             # Index health-check history by service and timestamp.
             connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_health_checks_history
@@ -232,8 +259,14 @@ class DatabaseManager:
         monitoring_interval_seconds: int = 10,
         healthy_threshold_seconds: float = 0.5,
         unhealthy_threshold_seconds: float = 1.0,
+        monitoring_source: str = "supervisor",
     ) -> int:
-        """Register a service or return its existing database ID."""
+        """Register a service or return its existing database ID.
+
+        ``monitoring_source`` records who registered the service:
+        "supervisor" (command line) or "dashboard" (picked up by a running
+        supervisor at the start of its next cycle).
+        """
         # Normalize inputs before validating or querying the database.
         service_name = service_name.strip()
         service_url = service_url.strip()
@@ -243,6 +276,9 @@ class DatabaseManager:
 
         if not service_url:
             raise ValueError("Service URL cannot be empty.")
+
+        if monitoring_source not in {"supervisor", "dashboard"}:
+            raise ValueError("Monitoring source must be supervisor or dashboard.")
 
         if timeout_seconds <= 0:
             raise ValueError("Timeout must be greater than zero.")
@@ -286,9 +322,10 @@ class DatabaseManager:
                     unhealthy_threshold_seconds,
                     is_enabled,
                     created_at,
-                    updated_at
+                    updated_at,
+                    monitoring_source
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """,
                 (
                     service_name,
@@ -299,17 +336,40 @@ class DatabaseManager:
                     unhealthy_threshold_seconds,
                     timestamp,
                     timestamp,
+                    monitoring_source,
                 ),
             )
 
             return int(cursor.lastrowid)
 
+    def list_services(
+        self,
+        source: str | None = None,
+        enabled_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return registered services, optionally filtered by their source."""
+        clauses, args = [], []
+        if source is not None:
+            clauses.append("monitoring_source = ?")
+            args.append(source)
+        if enabled_only:
+            clauses.append("is_enabled = 1")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        with self.get_connection() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM services {where} ORDER BY service_id",
+                args,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def save_health_check(
         self,
         service_id: int,
         result: Any,
+        diagnosis: Any | None = None,
     ) -> int:
-        """Save a health-check result and return its database record ID."""
+        """Persist health evidence and its diagnosis for one target."""
         # Support both enum-based and string-based health statuses.
         health_status = getattr(result.health, "value", result.health)
 
@@ -339,9 +399,12 @@ class DatabaseManager:
                     status_code,
                     response_time_seconds,
                     error,
-                    error_type
+                    error_type,
+                    diagnosis,
+                    likely_cause,
+                    recommendation
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     service_id,
@@ -351,6 +414,9 @@ class DatabaseManager:
                     result.response_time_seconds,
                     result.error,
                     result.error_type,
+                    getattr(diagnosis, "diagnosis", None),
+                    getattr(diagnosis, "likely_cause", None),
+                    getattr(diagnosis, "recommendation", None),
                 ),
             )
 
@@ -376,7 +442,10 @@ class DatabaseManager:
                     status_code,
                     response_time_seconds,
                     error,
-                    error_type
+                    error_type,
+                    diagnosis,
+                    likely_cause,
+                    recommendation
                 FROM health_checks
                 WHERE service_id = ?
                 ORDER BY timestamp DESC, health_check_id DESC

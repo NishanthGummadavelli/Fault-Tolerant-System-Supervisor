@@ -1,0 +1,68 @@
+{% extends layout %}
+{% from "_macros.html" import badge, page_header, chart, empty, checks_table, incidents_table, infra_card, freshness, status_banner, transitions_table %}
+{% block title %}Overview{% endblock %}
+{% block header %}
+{% call page_header('Fault-Tolerant System Supervisor', 'System health, incident detection, and fault-tolerance monitoring.') %}
+<nav class="range-picker" aria-label="Chart time range">
+  {% for r in ('1h', '6h', '24h', '7d') %}<a href="{{ url_for('dashboard.overview', range=r) }}" {% if r == range_key %}aria-current="true"{% endif %}>{{ r }}</a>{% endfor %}
+</nav>
+{% endcall %}
+{% endblock %}
+{% block live %}
+{{ status_banner(application) }}
+{{ freshness(summary) }}
+
+<section aria-labelledby="infra-h">
+  <h2 id="infra-h">Infrastructure</h2>
+  {% if summary.services %}
+  <div class="infra-grid">
+    {% for s in summary.services|sort(attribute='role_order') %}{{ infra_card(s) }}{% endfor %}
+  </div>
+  {% else %}<div class="card">{{ empty('No services are monitored yet. Start the supervisor with --target options (see README).') }}</div>{% endif %}
+</section>
+
+<section class="cards" aria-label="Summary">
+  {% set c = summary.counts %}
+  {% for label, value, note in [
+      ('Monitored services', c.total_services, ''),
+      ('Healthy', c.healthy, ''), ('Degraded', c.degraded, ''), ('Unhealthy', c.unhealthy, ''),
+      ('Open incidents', c.open_incidents, ''), ('Critical incidents', c.critical_incidents, ''),
+      ('Application availability', (application.availability.value ~ '%') if application.availability.value is not none else '—',
+        ('24 h, ' ~ application.availability.checks ~ ' checks on ' ~ application.availability.basis) if application.availability.value is not none else 'needs a load balancer target'),
+      ('Avg. response time', (('%.3f s' % application.response.average_seconds) if application.response.average_seconds is not none else '—'),
+        'latest check of ' ~ application.response.samples ~ ' current service(s)')] %}
+  <div class="card stat"><span class="stat-label">{{ label }}</span><span class="stat-value">{{ value }}</span>{% if note %}<span class="muted stat-note">{{ note }}</span>{% endif %}</div>
+  {% endfor %}
+</section>
+<p class="muted formula">Availability = {{ application.availability.formula }}. Stale or never-checked services are not counted as healthy.</p>
+
+<section class="grid grid--charts" aria-label="Charts">
+  <div class="card"><h2>Service health distribution</h2><p class="muted">Current state per service.</p>
+    {{ chart('donut', donut, 'Distribution of services by current health state') }}</div>
+  <div class="card card--wide"><h2>Response time ({{ range_key }})</h2><p class="muted">Successful (2xx) responses only. Failed requests are marked, never plotted as zero.</p>
+    {{ chart('timeseries', response_chart, 'Response time trend per service') }}</div>
+  <div class="card card--wide"><h2>Health checks over time ({{ range_key }})</h2><p class="muted">Recorded checks per period by health state. Empty periods mean no checks were recorded.</p>
+    {{ chart('stackedbars', history_chart, 'Health checks over time by state') }}</div>
+  <div class="card"><h2>Availability ({{ range_key }})</h2><p class="muted">2xx responses &divide; all checks, per service.</p>
+    {{ chart('hbars', availability_chart, 'Availability per service') }}</div>
+  <div class="card"><h2>Incidents</h2><p class="muted">By status and severity.</p>
+    {{ chart('hbars', incident_chart, 'Incident distribution by status and severity') }}
+    {% if totals.incidents %}<p class="muted">{{ totals.occurrences }} recorded occurrence(s) are grouped into {{ totals.incidents }} incident(s).</p>{% endif %}</div>
+</section>
+
+<section class="card" aria-labelledby="insights-h"><h2 id="insights-h">Monitoring insights</h2>
+  <p class="muted">Each observation is derived from stored records; evidence is shown with it.</p>
+  {% if insights %}<ul class="insights">
+  {% for i in insights %}<li class="insight insight--{{ i.tone }}"><strong>{{ i.title }}</strong><br><span>{{ i.evidence }}</span>
+    {% if i.get('incident_id') %} <a href="{{ url_for('dashboard.incident_detail', incident_id=i.incident_id) }}">View incident</a>{% elif i.service_id %} <a href="{{ url_for('dashboard.service_detail', service_id=i.service_id) }}">View service</a>{% endif %}</li>{% endfor %}
+  </ul>{% else %}{{ empty('No observations yet. Insights appear once health checks are recorded.') }}{% endif %}
+</section>
+
+<section class="card"><h2>Failures and recoveries ({{ range_key }})</h2>{{ transitions_table(transitions) }}</section>
+
+<section class="grid grid--two">
+  <div class="card"><h2>Recent health checks</h2>{{ checks_table(recent_checks) }}<p><a href="{{ url_for('dashboard.health') }}">All health checks &rarr;</a></p></div>
+  <div class="card"><h2>Open and recent incidents</h2><p class="muted">Open and critical incidents are listed first.</p>{{ incidents_table(recent_incidents) }}<p><a href="{{ url_for('dashboard.incidents') }}">All incidents &rarr;</a></p></div>
+</section>
+<p class="muted footnote">This dashboard only reads data recorded by the supervisor process. Viewing or refreshing it does not run a health check.</p>
+{% endblock %}

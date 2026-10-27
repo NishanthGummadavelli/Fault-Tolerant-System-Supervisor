@@ -1,0 +1,50 @@
+{% extends layout %}
+{% from "_macros.html" import badge, page_header, chart, checks_table, incidents_table, diagnosis_card, empty %}
+{% block title %}{{ d.service.service_name }}{% endblock %}
+{% block header %}
+{% call page_header(d.service.service_name, d.service.service_url) %}
+<nav class="range-picker" aria-label="Chart time range">
+  {% for r in ('1h', '6h', '24h', '7d') %}<a href="{{ url_for('dashboard.service_detail', service_id=d.service.service_id, range=r) }}" {% if r == range_key %}aria-current="true"{% endif %}>{{ r }}</a>{% endfor %}
+</nav>
+{% endcall %}
+<p><a href="{{ url_for('dashboard.services') }}">&larr; All services</a></p>
+{% endblock %}
+{% block live %}
+{% if d.state == 'STALE' %}<ul class="notices"><li>The latest check is older than the expected reporting window ({{ d.stale_after_seconds|round|int }} s). Values below are the last recorded ones, not verified current health.</li></ul>{% endif %}
+<section class="grid grid--two">
+  <div class="card"><h2>Current state</h2>
+    <dl class="facts">
+      <dt>State</dt><dd>{{ badge(d.state) }}</dd>
+      {% if d.latest %}
+      <dt>Last recorded health</dt><dd>{{ badge(d.latest.health_status) }}</dd>
+      <dt>HTTP status</dt><dd>{{ d.latest.status_code if d.latest.status_code is not none else 'no response' }}</dd>
+      <dt>Response time</dt><dd>{% if d.latest.latency_seconds is not none %}{{ '%.3f' % d.latest.latency_seconds }} s{% else %}—{% endif %}</dd>
+      <dt>Last check</dt><dd>{{ d.latest.timestamp|display_time }}</dd>
+      <dt>Age of last check</dt><dd>{{ d.age_seconds|duration if d.age_seconds is not none else '—' }}</dd>
+      {% endif %}
+      <dt>Success rate (2xx), 24 h</dt><dd>{% if d.stats['24h'].success_rate is not none %}{{ d.stats['24h'].success_rate }}% of {{ d.stats['24h'].checks }} checks{% else %}no checks{% endif %}</dd>
+      <dt>Success rate (2xx), 7 d</dt><dd>{% if d.stats['7d'].success_rate is not none %}{{ d.stats['7d'].success_rate }}% of {{ d.stats['7d'].checks }} checks{% else %}no checks{% endif %}</dd>
+    </dl><p class="muted">Success rate is count-based: checks with a 2xx response divided by all checks in the period.</p></div>
+  <div class="card"><h2>Monitoring settings</h2>
+    <dl class="facts">
+      <dt>Interval</dt><dd>{{ d.service.monitoring_interval_seconds }} s</dd>
+      <dt>Timeout</dt><dd>{{ d.service.timeout_seconds }} s</dd>
+      <dt>Healthy below</dt><dd>{{ d.service.healthy_threshold_seconds }} s</dd>
+      <dt>Unhealthy at or above</dt><dd>{{ d.service.unhealthy_threshold_seconds }} s</dd>
+      <dt>Registered</dt><dd>{{ d.service.created_at|display_time }}</dd>
+    </dl></div>
+</section>
+<section class="grid grid--two">
+  <div class="card"><h2>Response time ({{ range_key }})</h2><p class="muted">Dashed lines mark this service's thresholds. Failures are marked, not plotted as zero.</p>
+    {{ chart('timeseries', response_chart, 'Response time trend for this service') }}</div>
+  <div class="card"><h2>Health checks over time ({{ range_key }})</h2>{{ chart('stackedbars', history_chart, 'Health checks over time by state') }}</div>
+</section>
+<section class="grid grid--two">
+  <div class="card">{{ diagnosis_card('Diagnosis of latest check', d.diagnosis_latest, 'not current health' if d.state == 'STALE' else none) }}</div>
+  <div class="card">{{ diagnosis_card('Most recent problem', d.diagnosis_problem) }}</div>
+</section>
+<section class="card"><h2>Incidents</h2>
+  {{ incidents_table(d.incidents) }}</section>
+<section class="card"><h2>Recent health checks</h2>{{ checks_table(d.recent_checks, false) }}
+  <p><a href="{{ url_for('dashboard.health', service_id=d.service.service_id) }}">Full history &rarr;</a></p></section>
+{% endblock %}

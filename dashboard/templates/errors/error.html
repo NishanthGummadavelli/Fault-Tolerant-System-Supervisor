@@ -1,0 +1,10 @@
+{% extends layout %}
+{% block title %}{{ title }}{% endblock %}
+{% block header %}{% endblock %}
+{% block live %}
+<section class="card empty-state" role="alert">
+  <h1>{{ status }} &mdash; {{ title }}</h1>
+  <p>{{ message }}</p>
+  <p><a href="{{ url_for('dashboard.overview') }}">Return to overview</a></p>
+</section>
+{% endblock %}
