@@ -33,6 +33,8 @@ MAX_CHART_SERVICES = 8
 MAX_POINTS_PER_SERIES = 400
 MAX_HISTORY_ROWS = 5000
 MAX_INSIGHT_SERVICES = 50
+# Active ALB and backend registrations used in the health overview.
+HEALTH_OVERVIEW_SERVICE_IDS = (2,5,6)
 
 _STATE_ORDER = {STATE_UNHEALTHY: 0, STATE_DEGRADED: 1, STATE_STALE: 2,
                 STATE_NO_DATA: 3, STATE_HEALTHY: 4}
@@ -883,6 +885,85 @@ class DashboardRepository:
                               "value": pct, "tone": tone, "suffix": "%"})
             return {"items": items, "max": 100, "range": range_key}
         return self._query(run, lambda: {"items": [], "max": 100, "range": range_key})
+
+
+
+    def health_percentage_by_service(self, range_key: str, now=None) -> dict:
+        """Return HEALTHY-check percentages for active monitored services."""
+        now = now or datetime.now(timezone.utc)
+        cutoff = params.range_cutoff(range_key, now)
+        service_ids = HEALTH_OVERVIEW_SERVICE_IDS
+        placeholders = ",".join("?" for _ in service_ids)
+
+        def run(conn):
+            rows = conn.execute(
+                f"""SELECT s.service_id, s.service_name,
+                           COUNT(h.health_check_id) AS total,
+                           COALESCE(SUM(
+                               CASE WHEN h.health_status = 'HEALTHY'
+                                    THEN 1 ELSE 0 END
+                           ), 0) AS healthy
+                    FROM services s
+                    LEFT JOIN health_checks h
+                        ON h.service_id = s.service_id
+                        AND h.timestamp >= ?
+                    WHERE s.service_id IN ({placeholders})
+                    GROUP BY s.service_id, s.service_name
+                    ORDER BY s.service_id""",
+                (cutoff, *service_ids)
+            ).fetchall()
+
+            services = []
+            total_healthy = 0
+            total_checks = 0
+
+            for row in rows:
+                healthy = row["healthy"]
+                total = row["total"]
+                percentage = (
+                    round(100.0 * healthy / total, 1)
+                    if total else None
+                )
+
+                services.append({
+                    "service_id": row["service_id"],
+                    "name": row["service_name"],
+                    "healthy": healthy,
+                    "total": total,
+                    "value": percentage,
+                })
+
+                total_healthy += healthy
+                total_checks += total
+
+            overall = {
+                "healthy": total_healthy,
+                "total": total_checks,
+                "value": (
+                    round(100.0 * total_healthy / total_checks, 1)
+                    if total_checks else None
+                ),
+            }
+
+            return {
+                "overall": overall,
+                "services": services,
+                "range": range_key,
+            }
+
+        return self._query(
+            run,
+            lambda: {
+                "overall": {
+                    "healthy": 0,
+                    "total": 0,
+                    "value": None,
+                },
+                "services": [],
+                "range": range_key,
+            }
+        )
+
 
     def get_transitions(self, range_key: str, service_id=None, now=None,
                         limit: int = 60) -> list[dict]:

@@ -104,15 +104,37 @@ class SystemSupervisor:
                 healthy_threshold_seconds=config.healthy_threshold,
                 unhealthy_threshold_seconds=config.unhealthy_threshold,
             )
+
+
+            incident_manager = IncidentManager(
+                healthy_threshold=config.healthy_threshold,
+                unhealthy_threshold=config.unhealthy_threshold,
+            )
+
+            # Restore unresolved incidents from the persistent database.
+            open_incidents = self.database.get_incident_history(
+                service_id=service_id,
+                status="OPEN",
+            )
+            incident_manager.restore_open_incidents(open_incidents)
+
+            # Preserve existing database IDs and persistence signatures.
+            for incident in incident_manager.get_incident_history():
+                self.incident_id_map[
+                    (service_id, incident.incident_id)
+                ] = incident.incident_id
+
+                # Prevent duplicate insertion of restored incidents.
+                self.persisted_incidents[
+                    incident.incident_id
+                ] = self._incident_signature(incident)
             self.target_states[target.url] = {
                 "target": target,
                 "service_id": service_id,
                 "health_monitor": HealthMonitor(monitor_config),
-                "incident_manager": IncidentManager(
-                    healthy_threshold=config.healthy_threshold,
-                    unhealthy_threshold=config.unhealthy_threshold,
-                ),
+                "incident_manager": incident_manager,
             }
+
 
         # Preserve the original single-target attributes for existing callers.
         first_state = self.target_states[self.targets[0].url]
@@ -208,15 +230,37 @@ class SystemSupervisor:
                 continue
 
             target = TargetConfig(name, url)
+            service_id = row["service_id"]
+
+            incident_manager = IncidentManager(
+                healthy_threshold=self.config.healthy_threshold,
+                unhealthy_threshold=self.config.unhealthy_threshold,
+            )
+
+            # Restore unresolved incidents for dashboard-registered services.
+            open_incidents = self.database.get_incident_history(
+                service_id=service_id,
+                status="OPEN",
+            )
+            incident_manager.restore_open_incidents(open_incidents)
+
+            # Preserve existing IDs and persistence signatures.
+            for incident in incident_manager.get_incident_history():
+                self.incident_id_map[
+                    (service_id, incident.incident_id)
+                ] = incident.incident_id
+
+                self.persisted_incidents[
+                    incident.incident_id
+                ] = self._incident_signature(incident)
+
             self.target_states[url] = {
                 "target": target,
-                "service_id": row["service_id"],
+                "service_id": service_id,
                 "health_monitor": HealthMonitor(monitor_config),
-                "incident_manager": IncidentManager(
-                    healthy_threshold=self.config.healthy_threshold,
-                    unhealthy_threshold=self.config.unhealthy_threshold,
-                ),
+                "incident_manager": incident_manager,
             }
+
             self.targets = self.targets + (target,)
             known_names.add(name.casefold())
             logging.info("Now monitoring dashboard-registered service %s at %s", name, url)

@@ -21,6 +21,53 @@
   {% else %}<div class="card">{{ empty('No services are monitored yet. Start the supervisor with --target options (see README).') }}</div>{% endif %}
 </section>
 
+<section class="card" aria-labelledby="health-percentage-h">
+  <h2 id="health-percentage-h">Infrastructure Health Percentage ({{ range_key }})</h2>
+  <p class="muted">
+    Percentage of recorded checks classified as HEALTHY.
+    DEGRADED and UNHEALTHY checks are not counted as healthy.
+  </p>
+
+  <div class="cards" aria-label="Infrastructure health percentages">
+    <div class="card stat">
+      <span class="stat-label">Overall Infrastructure Health</span>
+      <span class="stat-value">
+        {% if health_overview.overall.value is not none %}
+          {{ health_overview.overall.value }}%
+        {% else %}
+          —
+        {% endif %}
+      </span>
+      <span class="muted stat-note">
+        {{ health_overview.overall.healthy }} healthy /
+        {{ health_overview.overall.total }} total checks
+      </span>
+    </div>
+
+    {% for service in health_overview.services %}
+    <div class="card stat">
+      <span class="stat-label">{{ service.name }}</span>
+      <span class="stat-value">
+        {% if service.value is not none %}
+          {{ service.value }}%
+        {% else %}
+          —
+        {% endif %}
+      </span>
+      <span class="muted stat-note">
+        {{ service.healthy }} healthy /
+        {{ service.total }} total checks
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="muted formula">
+    Health percentage = HEALTHY checks &divide; all recorded checks &times; 100.
+    Overall percentage is calculated using combined check counts.
+  </p>
+</section>
+
 <section class="cards" aria-label="Summary">
   {% set c = summary.counts %}
   {% for label, value, note in [

@@ -102,6 +102,7 @@ def overview():
         insights=repo.get_insights(summary),
         application=repo.get_application(summary),
         availability_chart=repo.availability_by_service(rng),
+	health_overview=repo.health_percentage_by_service(rng),
         transitions=repo.get_transitions(rng, limit=8),
         recent_checks=repo.list_health_checks({"range": "all"}, 1, 8)["items"],
         recent_incidents=repo.list_incidents({"sort": "priority"}, 1, 6)["items"],

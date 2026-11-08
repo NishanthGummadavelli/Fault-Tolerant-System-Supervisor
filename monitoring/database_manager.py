@@ -746,10 +746,16 @@ class DatabaseManager:
         if status is not None and status not in {"OPEN", "RESOLVED"}:
             raise ValueError("Status must be OPEN or RESOLVED.")
 
+
         query = """
             SELECT
                 incident_id,
                 service_id,
+                (
+                    SELECT service_url
+                    FROM services
+                    WHERE services.service_id = incidents.service_id
+                ) AS service_url,
                 category,
                 severity,
                 status,
@@ -761,6 +767,7 @@ class DatabaseManager:
             FROM incidents
             WHERE 1 = 1
         """
+
         parameters: list[Any] = []
 
         if service_id is not None:

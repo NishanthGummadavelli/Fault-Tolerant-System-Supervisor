@@ -97,6 +97,34 @@ class IncidentManager:
 
         self._next_incident_number = 1
 
+    def restore_open_incidents(self, records: list[dict]) -> None:
+        """Restore unresolved incidents retrieved from persistent storage."""
+
+        for record in records:
+            incident = Incident(
+                incident_id=record["incident_id"],
+                service_url=record["service_url"],
+                category=IncidentCategory(record["category"]),
+                severity=IncidentSeverity(record["severity"]),
+                status=IncidentStatus(record["status"]),
+                summary=record["summary"],
+                created_at=datetime.fromisoformat(record["created_at"]),
+                last_updated_at=datetime.fromisoformat(
+                    record["last_updated_at"]
+                ),
+                occurrences=record["occurrences"],
+                resolved_at=(
+                    datetime.fromisoformat(record["resolved_at"])
+                    if record["resolved_at"]
+                    else None
+                ),
+            )
+
+            # Restore the incident into history and the active incident index.
+            self.incidents.append(incident)
+            self.open_incidents[
+                (incident.service_url, incident.category)
+            ] = incident
     def _get_counters(self, service_url: str) -> dict[str, int]:
         """Return or initialize consecutive health-check counters."""
 
