@@ -1,25 +1,8 @@
 # Fault-Tolerant System Supervisor
 
-```{=html}
-<p align="center">
-```
-`<strong>`{=html}Cloud Computing Project \| Team
-CodeCrafters`</strong>`{=html}`<br>`{=html} Monitoring · Failure
-Detection · Load Balancing · Incident Recovery
-```{=html}
-</p>
-```
-```{=html}
-<p align="center">
-```
-`<img alt="AWS" src="https://img.shields.io/badge/Cloud-AWS-orange">`{=html}
-`<img alt="Python" src="https://img.shields.io/badge/Python-3.12-blue">`{=html}
-`<img alt="Dashboard" src="https://img.shields.io/badge/Dashboard-Flask-black">`{=html}
-`<img alt="Database" src="https://img.shields.io/badge/Database-SQLite-lightgrey">`{=html}
-`<img alt="Status" src="https://img.shields.io/badge/Status-Implemented%20%26%20Tested-success">`{=html}
-```{=html}
-</p>
-```
+**Cloud Computing Project \| Team CodeCrafters**\
+*Monitoring · Failure Detection · Load Balancing · Incident Recovery*
+
 A cloud-based fault-tolerance demonstration deployed on **Amazon Web
 Services (AWS)**. The project monitors backend health, detects service
 failures, records incidents and recovery, and presents infrastructure
@@ -129,81 +112,80 @@ flowchart TB
 
 The current deployment uses these AWS components:
 
-  -----------------------------------------------------------------------
-  Component                           Purpose
-  ----------------------------------- -----------------------------------
-  Amazon VPC                          Isolated network for project
-                                      resources
+------------------------------------------------------------------------
 
-  Public and private subnets          Network segmentation
+Component Purpose
 
-  Internet Gateway and route tables   Internet connectivity where
-                                      required
+------------------------------------------------------------------------
 
-  Security Groups                     Network access control
+Amazon VPC Isolated network for project resources
 
-  Supervisor EC2                      Runs Python monitoring and Flask
-                                      dashboard
+Public and private subnets Network segmentation
 
-  Backend EC2 01                      Hosts CloudApp using Apache
+Internet Gateway and route tables Internet connectivity where required
 
-  Backend EC2 02                      Hosts CloudApp using Apache
+Security Groups Network access control
 
-  Application Load Balancer           Distributes application traffic and
-                                      checks target health
+Supervisor EC2 Runs Python monitoring and Flask dashboard
 
-  SQLite                              Stores service registrations,
-                                      health checks, incidents, and
-                                      incident events
-  -----------------------------------------------------------------------
+Backend EC2 01 Hosts CloudApp using Apache
+
+Backend EC2 02 Hosts CloudApp using Apache
+
+Application Load Balancer Distributes application traffic and checks
+target health
+
+## SQLite Stores service registrations, health checks, incidents, and incident events
 
 ### Current deployment endpoints
 
 These are the environment-specific values used in the current
 deployment. They may change if the infrastructure is recreated.
 
-  -------------------------------------------------------------------------------------------------
-  Resource                            Current endpoint
-  ----------------------------------- -------------------------------------------------------------
-  Supervisor EC2 private IP           `10.0.11.82`
+------------------------------------------------------------------------
 
-  Backend EC2 01 private IP           `10.0.9.129`
+Resource Current endpoint
 
-  Backend EC2 02 private IP           `10.0.20.10`
+------------------------------------------------------------------------
 
-  Application Load Balancer           `fts-application-alb-858756406.us-east-1.elb.amazonaws.com`
-  -------------------------------------------------------------------------------------------------
+Supervisor EC2 private IP Not published (private VPC address)
+
+Backend EC2 01 private IP Not published (private VPC address)
+
+Backend EC2 02 private IP Not published (private VPC address)
+
+## Application Load Balancer `<YOUR_ALB_DNS>`
 
 The supervisor runs inside the VPC and reaches the backends using their
 private IP addresses. Users access CloudApp through the ALB DNS name.
 
 ## Technology stack
 
-  -----------------------------------------------------------------------
-  Layer                               Technologies
-  ----------------------------------- -----------------------------------
-  Cloud platform                      AWS
+------------------------------------------------------------------------
 
-  Compute                             Amazon EC2
+Layer Technologies
 
-  Networking                          VPC, subnets, route tables,
-                                      Internet Gateway, Security Groups
+------------------------------------------------------------------------
 
-  Traffic distribution                Application Load Balancer
+Cloud platform AWS
 
-  Web server                          Apache HTTP Server
+Compute Amazon EC2
 
-  Application                         HTML and CSS (CloudApp static
-                                      demonstration site)
+Networking VPC, subnets, route tables, Internet Gateway, Security Groups
 
-  Monitoring                          Python, HTTP health checks
+Traffic distribution Application Load Balancer
 
-  Dashboard                           Flask, HTML, CSS, JavaScript
+Web server Apache HTTP Server
 
-  Database                            SQLite
+Application HTML and CSS (CloudApp static demonstration site)
 
-  Version control                     Git and GitHub
-  -----------------------------------------------------------------------
+Monitoring Python, HTTP health checks
+
+Dashboard Flask, HTML, CSS, JavaScript
+
+Database SQLite
+
+## Version control Git and GitHub
 
 **Scope clarification:** Auto Scaling, Amazon CloudWatch, and Amazon RDS
 appeared in the initial target architecture but are not part of the
@@ -252,26 +234,24 @@ information; it does not trigger a new backend health check.
 
 ### Health states
 
-  -----------------------------------------------------------------------
-  State                               Meaning
-  ----------------------------------- -----------------------------------
-  `HEALTHY`                           Successful HTTP response within the
-                                      healthy response-time threshold
+------------------------------------------------------------------------
 
-  `DEGRADED`                          Successful response, but response
-                                      time is elevated
+State Meaning
 
-  `UNHEALTHY`                         Endpoint is unavailable, returns an
-                                      unsuccessful HTTP status, or
-                                      exceeds the unhealthy response-time
-                                      threshold
+------------------------------------------------------------------------
 
-  `STALE` (dashboard state)           Latest recorded check is too old to
-                                      represent current health
+`HEALTHY` Successful HTTP response within the healthy response-time
+threshold
 
-  `NO_DATA` (dashboard state)         No health check has been recorded
-                                      for the service
-  -----------------------------------------------------------------------
+`DEGRADED` Successful response, but response time is elevated
+
+`UNHEALTHY` Endpoint is unavailable, returns an unsuccessful HTTP
+status, or exceeds the unhealthy response-time threshold
+
+`STALE` (dashboard state) Latest recorded check is too old to represent
+current health
+
+## `NO_DATA` (dashboard state) No health check has been recorded for the service
 
 `STALE` and `NO_DATA` are dashboard presentation states, not health
 states written by the supervisor.
@@ -308,35 +288,29 @@ not definitive proof of the underlying infrastructure fault.
 The Flask dashboard is in `dashboard/`. It reads monitoring records from
 the shared SQLite database and does not start or control the supervisor.
 
-  -----------------------------------------------------------------------
-  Page                                Information displayed
-  ----------------------------------- -----------------------------------
-  Overview                            Infrastructure status, service
-                                      cards, health percentages, summary
-                                      metrics, charts, insights, recent
-                                      checks, and incidents
+------------------------------------------------------------------------
 
-  Services                            Registered services, status,
-                                      filtering, sorting, pagination, and
-                                      service details
+Page Information displayed
 
-  Health history                      Recorded checks, health states,
-                                      response times, and failure
-                                      information
+------------------------------------------------------------------------
 
-  Incidents                           Incident status, severity,
-                                      category, occurrence count, and
-                                      lifecycle details
+Overview Infrastructure status, service cards, health percentages,
+summary metrics, charts, insights, recent checks, and incidents
 
-  Diagnostics                         Observed failures and likely causes
+Services Registered services, status, filtering, sorting, pagination,
+and service details
 
-  Event history                       Incident creation, updates, and
-                                      resolution events
+Health history Recorded checks, health states, response times, and
+failure information
 
-  Settings                            Database status, service
-                                      information, role mapping, and
-                                      registration configuration
-  -----------------------------------------------------------------------
+Incidents Incident status, severity, category, occurrence count, and
+lifecycle details
+
+Diagnostics Observed failures and likely causes
+
+Event history Incident creation, updates, and resolution events
+
+## Settings Database status, service information, role mapping, and registration configuration
 
 ### Infrastructure health percentage
 
@@ -350,7 +324,7 @@ Health percentage = (HEALTHY checks / All recorded checks) × 100
 The overall percentage uses the combined check counts of Backend Server
 1 and Backend Server 2 for the selected time range. This is a historical
 measurement for that range and should be considered alongside each
-service's current freshness state.
+service\'s current freshness state.
 
 ### Application status and freshness
 
@@ -412,7 +386,7 @@ Both backend EC2 instances must be running with Apache serving CloudApp.
 -   Apache active on both backend instances.
 -   Network rules allowing the supervisor to reach backend HTTP port 80.
 
-### 1. Connect to the Supervisor EC2 instance
+### 1. Connect to the Supervisor EC2 instance {#1-connect-to-the-supervisor-ec2-instance} {#1-connect-to-the-supervisor-ec2-instance-1-connect-to-the-supervisor-ec2-instance} {#1-connect-to-the-supervisor-ec2-instance-1-connect-to-the-supervisor-ec2-instance-1-connect-to-the-supervisor-ec2-instance-1-connect-to-the-supervisor-ec2-instance}
 
 Use AWS Console → EC2 → Instances → `fts-supervisor-server-01` → Connect
 → EC2 Instance Connect.
@@ -424,7 +398,7 @@ cd ~/fault-tolerant-system-supervisor
 source .venv/bin/activate
 ```
 
-### 2. Start the Flask dashboard (Terminal 1)
+### 2. Start the Flask dashboard (Terminal 1) {#2-start-the-flask-dashboard-terminal-1} {#2-start-the-flask-dashboard-terminal-1-2-start-the-flask-dashboard-terminal-1} {#2-start-the-flask-dashboard-terminal-1-2-start-the-flask-dashboard-terminal-1-2-start-the-flask-dashboard-terminal-1-2-start-the-flask-dashboard-terminal-1}
 
 Open one terminal session:
 
@@ -437,10 +411,10 @@ flask --app 'dashboard.app:create_app' run \
   --port 5000
 ```
 
-This binds the dashboard to the Supervisor instance's localhost. It is
+This binds the dashboard to the Supervisor instance\'s localhost. It is
 suitable for local access, not a public production deployment.
 
-### 3. Start health monitoring (Terminal 2)
+### 3. Start health monitoring (Terminal 2) {#3-start-health-monitoring-terminal-2} {#3-start-health-monitoring-terminal-2-3-start-health-monitoring-terminal-2} {#3-start-health-monitoring-terminal-2-3-start-health-monitoring-terminal-2-3-start-health-monitoring-terminal-2-3-start-health-monitoring-terminal-2}
 
 Open a second terminal session on the same Supervisor EC2 instance:
 
@@ -449,8 +423,8 @@ cd ~/fault-tolerant-system-supervisor
 source .venv/bin/activate
 
 python -m monitoring.supervisor \
-  --target "Backend Server 01=http://10.0.9.129/" \
-  --target "Backend Server 02=http://10.0.20.10/" \
+  --target "Backend Server 01=http://${BACKEND_01_PRIVATE_IP}/" \
+  --target "Backend Server 02=http://${BACKEND_02_PRIVATE_IP}/" \
   --timeout 3 \
   --interval 10 \
   --healthy-threshold 0.5 \
@@ -460,7 +434,7 @@ python -m monitoring.supervisor \
 The supervisor checks both backends every 10 seconds and stores the
 results in the configured SQLite database.
 
-### 4. Stop the processes
+### 4. Stop the processes {#4-stop-the-processes} {#4-stop-the-processes-4-stop-the-processes} {#4-stop-the-processes-4-stop-the-processes-4-stop-the-processes-4-stop-the-processes}
 
 When the demonstration or monitoring session is complete:
 
@@ -479,34 +453,29 @@ endpoints directly.
 
 Dashboard environment variables:
 
-  --------------------------------------------------------------------------------
-  Variable                         Default                 Description
-  -------------------------------- ----------------------- -----------------------
-  `SUPERVISOR_DB_PATH`             Project database path   SQLite database read by
-                                                           the dashboard
+------------------------------------------------------------------------
 
-  `DASHBOARD_REFRESH_SECONDS`      `10`                    Browser refresh
-                                                           interval (2--300
-                                                           seconds)
+Variable Default Description
 
-  `DASHBOARD_STALE_MULTIPLIER`     `3.0`                   Multiplier used to
-                                                           determine stale data
+------------------------------------------------------------------------
 
-  `DASHBOARD_SERVICE_ROLES`        None                    Optional service role
-                                                           mapping
+`SUPERVISOR_DB_PATH` Project database path SQLite database read by the
+dashboard
 
-  `DASHBOARD_ALLOW_REGISTRATION`   Off                     Enables optional
-                                                           service registration
-                                                           when set to `1` and an
-                                                           admin token is
-                                                           configured
+`DASHBOARD_REFRESH_SECONDS` `10` Browser refresh interval (2\--300
+seconds)
 
-  `DASHBOARD_ADMIN_TOKEN`          None                    Required for optional
-                                                           service registration
+`DASHBOARD_STALE_MULTIPLIER` `3.0` Multiplier used to determine stale
+data
 
-  `DASHBOARD_MAX_SERVICES`         `50`                    Maximum service
-                                                           registration limit
-  --------------------------------------------------------------------------------
+`DASHBOARD_SERVICE_ROLES` None Optional service role mapping
+
+`DASHBOARD_ALLOW_REGISTRATION` Off Enables optional service registration
+when set to `1` and an admin token is configured
+
+`DASHBOARD_ADMIN_TOKEN` None Required for optional service registration
+
+## `DASHBOARD_MAX_SERVICES` `50` Maximum service registration limit
 
 Do not commit tokens, passwords, private keys, or other credentials to
 GitHub.
@@ -555,41 +524,40 @@ recovery in this demonstration is performed manually.
 The following results were observed during AWS integration and dashboard
 verification:
 
-  -----------------------------------------------------------------------
-  Verification                        Observed result
-  ----------------------------------- -----------------------------------
-  CloudApp on Backend EC2 01          Loaded successfully
+------------------------------------------------------------------------
 
-  CloudApp on Backend EC2 02          Loaded successfully
+Verification Observed result
 
-  Application Load Balancer           Served CloudApp through a healthy
-                                      backend
+------------------------------------------------------------------------
 
-  Backend health monitoring           Both backends returned HTTP 200
+CloudApp on Backend EC2 01 Loaded successfully
 
-  Monitoring interval                 10 seconds
+CloudApp on Backend EC2 02 Loaded successfully
 
-  SQLite persistence                  New health-check records appeared
-                                      in the existing database
+Application Load Balancer Served CloudApp through a healthy backend
 
-  Dashboard endpoint                  Returned HTTP 200
+Backend health monitoring Both backends returned HTTP 200
 
-  Health percentage calculation       Correctly reflected checks for the
-                                      two monitored backends
+Monitoring interval 10 seconds
 
-  Verified health percentage snapshot 100% overall (204 healthy / 204
-                                      total checks)
+SQLite persistence New health-check records appeared in the existing
+database
 
-  Backend 01 failure simulation       Connection failure detected; ALB
-                                      continued serving through Backend
-                                      02
+Dashboard endpoint Returned HTTP 200
 
-  Backend recovery                    Healthy checks recorded and the
-                                      earlier critical incident resolved
+Health percentage calculation Correctly reflected checks for the two
+monitored backends
 
-  Incident event history              Creation, updates, and resolution
-                                      retained
-  -----------------------------------------------------------------------
+Verified health percentage snapshot 100% overall (204 healthy / 204
+total checks)
+
+Backend 01 failure simulation Connection failure detected; ALB continued
+serving through Backend 02
+
+Backend recovery Healthy checks recorded and the earlier critical
+incident resolved
+
+## Incident event history Creation, updates, and resolution retained
 
 The 100% health percentage is a snapshot of checks recorded during the
 selected time range at verification time. It is not a guarantee of
@@ -653,13 +621,5 @@ Dashboard tests require Flask in the active Python environment.
 **Team Name:** CodeCrafters\
 **Project:** Fault-Tolerant System Supervisor
 
-```{=html}
-<p align="center">
-```
-`<strong>`{=html}Built with Python and
-AWS`</strong>`{=html}`<br>`{=html} Monitoring infrastructure. Detecting
-failures. Observing recovery.
-```{=html}
-</p>
-```
-
+**Built with Python and AWS**\
+Monitoring infrastructure. Detecting failures. Observing recovery.
