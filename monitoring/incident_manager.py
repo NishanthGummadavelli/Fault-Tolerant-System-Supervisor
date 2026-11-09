@@ -97,6 +97,34 @@ class IncidentManager:
 
         self._next_incident_number = 1
 
+    def restore_open_incidents(self, records: list[dict]) -> None:
+        """Restore unresolved incidents retrieved from persistent storage."""
+
+        for record in records:
+            incident = Incident(
+                incident_id=record["incident_id"],
+                service_url=record["service_url"],
+                category=IncidentCategory(record["category"]),
+                severity=IncidentSeverity(record["severity"]),
+                status=IncidentStatus(record["status"]),
+                summary=record["summary"],
+                created_at=datetime.fromisoformat(record["created_at"]),
+                last_updated_at=datetime.fromisoformat(
+                    record["last_updated_at"]
+                ),
+                occurrences=record["occurrences"],
+                resolved_at=(
+                    datetime.fromisoformat(record["resolved_at"])
+                    if record["resolved_at"]
+                    else None
+                ),
+            )
+
+            # Restore the incident into history and the active incident index.
+            self.incidents.append(incident)
+            self.open_incidents[
+                (incident.service_url, incident.category)
+            ] = incident
     def _get_counters(self, service_url: str) -> dict[str, int]:
         """Return or initialize consecutive health-check counters."""
 
@@ -244,6 +272,26 @@ class IncidentManager:
 
         return resolved_ids
 
+    @staticmethod
+    def _failure_summary(result: object) -> str:
+        """Build an incident summary from observed HTTP and connection evidence."""
+        status_code = getattr(result, "status_code", None)
+        error_type = getattr(result, "error_type", None)
+        error = getattr(result, "error", None)
+        response_time = getattr(result, "response_time_seconds", None)
+
+        if status_code is not None and not 200 <= status_code < 300:
+            return f"Service returned HTTP {status_code}; endpoint is unavailable."
+        if error_type == "timeout":
+            return "Health check timed out before the endpoint responded."
+        if error_type == "connection_refused":
+            return "Connection refused; the endpoint may not be listening."
+        if error_type == "connection_error":
+            return f"Connection failure: {error or 'endpoint could not be reached'}."
+        if response_time is not None:
+            return f"Endpoint response time is unhealthy ({response_time:.3f} seconds)."
+        return "The service is unavailable or returning HTTP errors."
+
     def process_result(self, result: object) -> list[str]:
         """Process one health check and return any incident events."""
 
@@ -292,7 +340,10 @@ class IncidentManager:
                     service_url,
                     IncidentCategory.ELEVATED_LATENCY,
                     IncidentSeverity.WARNING,
-                    "Response latency remains elevated.",
+                    (
+                        f"Response latency remains elevated "
+                        f"({getattr(result, 'response_time_seconds', 0.0):.3f} seconds)."
+                    ),
                 )
 
                 action = "Opened" if created else "Updated"
@@ -326,7 +377,7 @@ class IncidentManager:
                     service_url,
                     IncidentCategory.ELEVATED_LATENCY,
                     IncidentSeverity.CRITICAL,
-                    "Response latency has reached the unhealthy threshold.",
+                    self._failure_summary(result),
                 )
 
                 action = "Opened" if created else "Updated"
@@ -346,7 +397,7 @@ class IncidentManager:
                     service_url,
                     IncidentCategory.SERVICE_UNAVAILABLE,
                     IncidentSeverity.CRITICAL,
-                    "The service is unavailable or returning HTTP errors.",
+                    self._failure_summary(result),
                 )
 
                 action = "Opened" if created else "Updated"

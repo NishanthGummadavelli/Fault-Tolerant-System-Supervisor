@@ -1,0 +1,36 @@
+{% extends layout %}
+{% from "_macros.html" import page_header, services_table, pager, select, freshness %}
+{% block title %}Services{% endblock %}
+{% block header %}
+{{ page_header('Services', 'Every monitored target: load balancer, backend servers and any additional services.') }}
+{% if registered %}
+<p class="alert alert--ok" role="status"><strong>{{ registered.name }}</strong> was recorded in the database. This does <em>not</em> mean it is being monitored yet: a running supervisor starts monitoring it when its next cycle begins. Until its first check appears it is shown as &ldquo;awaiting first check&rdquo;.</p>
+{% endif %}
+<form class="filters" method="get" action="{{ url_for('dashboard.services') }}">
+  <label>Search by name <input type="search" name="q" value="{{ request.args.get('q', '') }}" maxlength="80"></label>
+  {{ select('state', 'State', states, request.args.get('state', '')) }}
+  <label>Sort by <select name="sort">{% for s in sorts %}<option value="{{ s }}" {% if request.args.get('sort', 'name') == s %}selected{% endif %}>{{ s.replace('_', ' ').title() }}</option>{% endfor %}</select></label>
+  <label>Order <select name="order"><option value="asc">Ascending</option><option value="desc" {% if request.args.get('order') == 'desc' %}selected{% endif %}>Descending</option></select></label>
+  <button class="btn" type="submit">Apply</button> <a class="btn btn--ghost" href="{{ url_for('dashboard.services') }}">Reset</a>
+</form>
+{% if registration_enabled %}
+<details class="card add-service" {% if form_errors %}open{% endif %}>
+  <summary>Add a service</summary>
+  <p class="muted">Registers the endpoint in the shared database. Monitoring begins only when a running supervisor picks it up at the start of its next cycle; the dashboard itself never checks the endpoint.</p>
+  {% if form_errors %}<ul class="alert alert--error" role="alert">{% for e in form_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <form method="post" action="{{ url_for('dashboard.add_service') }}" class="filters filters--plain">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Service name <input type="text" name="name" required maxlength="60" value="{{ form.get('name', '') }}"></label>
+    <label>Endpoint URL <input type="url" name="url" required maxlength="2048" placeholder="http://host/" value="{{ form.get('url', '') }}"></label>
+    <label>Admin token <input type="password" name="admin_token" required autocomplete="off"></label>
+    <button class="btn" type="submit">Register service</button>
+  </form>
+</details>
+{% else %}
+<p class="muted">Adding services from the browser is disabled. Add targets with <code>--target "NAME=URL"</code> when starting the supervisor, or see Settings to enable registration.</p>
+{% endif %}
+{% endblock %}
+{% block live %}
+{{ freshness(summary) }}
+<section class="card">{{ services_table(items, detailed=true) }}{{ pager(pg) }}</section>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% macro badge(state) -%}
+  {%- set meta = STATE_META.get(state, ('?', state or 'Unknown')) -%}
+  <span class="badge badge--{{ (state or 'none')|lower|replace('_', '-') }}"><span aria-hidden="true">{{ meta[0] }}</span> {{ meta[1] }}</span>
+{%- endmacro %}
+
+{% macro page_header(title, subtitle) %}
+<header class="page-header">
+  <div><h1>{{ title }}</h1><p class="subtitle">{{ subtitle }}</p></div>
+  {{ caller() if caller else '' }}
+</header>
+{% endmacro %}
+
+{% macro empty(message) %}
+<p class="empty-state">{{ message }}</p>
+{% endmacro %}
+
+{% macro latency(item) -%}
+  {%- if item.latency_seconds is not none -%}{{ '%.3f' % item.latency_seconds }} s{%- else -%}<span class="muted">no response</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro pager(p) %}
+{% if p.pages > 1 %}
+<nav class="pager" aria-label="Pagination">
+  {% if p.has_prev %}<a href="{{ page_url(p.page - 1) }}" rel="prev">&larr; Previous</a>{% else %}<span class="disabled">&larr; Previous</span>{% endif %}
+  <span>Page {{ p.page }} of {{ p.pages }} &middot; {{ p.total }} record(s)</span>
+  {% if p.has_next %}<a href="{{ page_url(p.page + 1) }}" rel="next">Next &rarr;</a>{% else %}<span class="disabled">Next &rarr;</span>{% endif %}
+</nav>
+{% elif p.total %}<p class="muted pager-note">{{ p.total }} record(s)</p>{% endif %}
+{% endmacro %}
+
+{% macro chart(kind, data, label) %}
+<div class="chart" data-chart-type="{{ kind }}" data-chart='{{ data|tojson }}' role="img" aria-label="{{ label }}">
+  <p class="chart-fallback">Chart is shown when JavaScript is enabled.</p>
+</div>
+{% endmacro %}
+
+{% macro checks_table(items, show_service=true) %}
+{% if items %}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Time (UTC)</th>{% if show_service %}<th scope="col">Service</th>{% endif %}<th scope="col">State</th><th scope="col">HTTP</th><th scope="col">Response time</th><th scope="col">Type</th><th scope="col">Error</th></tr></thead>
+  <tbody>
+  {% for c in items %}
+  <tr>
+    <td>{{ c.timestamp|display_time }}</td>
+    {% if show_service %}<td><a href="{{ url_for('dashboard.service_detail', service_id=c.service_id) }}">{{ c.service_name }}</a></td>{% endif %}
+    <td>{{ badge(c.health_status) }}</td>
+    <td>{{ c.status_code if c.status_code is not none else '—' }}</td>
+    <td>{{ latency(c) }}</td>
+    <td>{{ FAILURE_LABELS[c.category] }}</td>
+    <td class="wrap">{% if c.error %}{{ c.error }}{% else %}<span class="muted">—</span>{% endif %}{% if c.error_type %}<br><span class="muted">{{ c.error_type }}</span>{% endif %}{% if c.diagnosis %}<br><span class="muted">Diagnosis: {{ c.diagnosis }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}{{ empty('No health checks match.') }}{% endif %}
+{% endmacro %}
+
+{% macro incidents_table(items) %}
+{% if items %}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Incident</th><th scope="col">Service</th><th scope="col">Category</th><th scope="col">Severity</th><th scope="col">Status</th><th scope="col">Latest observed failure</th><th scope="col">Events</th><th scope="col">First detected (UTC)</th><th scope="col">Last update (UTC)</th><th scope="col">Duration</th></tr></thead>
+  <tbody>
+  {% for i in items %}
+  <tr>
+    <td><a href="{{ url_for('dashboard.incident_detail', incident_id=i.incident_id) }}">{{ i.incident_id }}</a></td>
+    <td><a href="{{ url_for('dashboard.service_detail', service_id=i.service_id) }}">{{ i.service_name }}</a></td>
+    <td>{{ i.category|replace('_', ' ')|title }}</td>
+    <td>{{ badge(i.severity) }}</td>
+    <td>{{ badge(i.status) }}</td>
+    <td class="wrap">{% if i.latest_failure %}{{ i.latest_failure.failure_label or 'Failure' }}{% if i.latest_failure.diagnosis %}<br><span class="muted">{{ i.latest_failure.diagnosis }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{{ i.event_count }} <span class="muted">({{ i.occurrences }} occ.)</span></td>
+    <td>{{ i.created_at|display_time }}</td>
+    <td>{{ i.last_updated_at|display_time }}</td>
+    <td>{{ i.duration_seconds|duration }}{% if i.status == 'OPEN' %} <span class="muted">so far</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}{{ empty('No incidents match.') }}{% endif %}
+{% endmacro %}
+
+{% macro status_banner(app) %}
+<div class="status-banner status-banner--{{ app.status.tone }}" role="status">
+  <strong>{{ app.status.title }}</strong>
+  <span>{{ app.status.detail }}</span>
+</div>
+{% endmacro %}
+
+{% macro infra_card(s) %}
+<article class="card infra-card infra-card--{{ s.state|lower|replace('_', '-') }}">
+  <header>
+    <span class="role">{{ s.role_label }}</span>
+    {{ badge(s.state) }}
+  </header>
+  <h3><a href="{{ url_for('dashboard.service_detail', service_id=s.service_id) }}">{{ s.name }}</a></h3>
+  <p class="muted endpoint">{{ s.url }}</p>
+  <dl class="facts facts--compact">
+    <dt>HTTP status</dt><dd>{{ s.status_code if s.status_code is not none else ('no response' if s.last_check_at else '—') }}</dd>
+    <dt>Response time</dt><dd>{{ ('%.3f s' % s.response_time_seconds) if s.response_time_seconds is not none else '—' }}</dd>
+    <dt>Last checked</dt><dd>{{ s.last_check_at|display_time }}</dd>
+    <dt>Last successful</dt><dd>{{ s.last_healthy_at|display_time }}</dd>
+    <dt>Data</dt><dd>
+      {% if s.state == 'NO_DATA' %}{% if s.awaiting_first_check %}Awaiting first check (registered from the dashboard){% else %}Never checked{% endif %}
+      {% elif s.state == 'STALE' %}<strong class="warn-text">Stale</strong> &middot; {{ s.age_seconds|duration if s.age_seconds is not none else 'age unknown' }} old (expected within {{ s.stale_after_seconds|round|int }} s)
+      {% else %}Current &middot; {{ s.age_seconds|duration }} ago{% endif %}</dd>
+    <dt>Open incidents</dt><dd>{{ s.open_incidents }}</dd>
+  </dl>
+  {% if s.failure_type %}
+  <div class="infra-diag">
+    <strong>{{ s.failure_label }}</strong>
+    {% if s.diagnosis %}<p>{{ s.diagnosis }}</p>{% endif %}
+    {% if s.likely_cause %}<p class="muted"><span class="tag tag--infer">inferred</span> {{ s.likely_cause }}</p>{% endif %}
+    {% if s.state == 'STALE' %}<p class="muted">From the last recorded check, not current.</p>{% endif %}
+  </div>
+  {% endif %}
+</article>
+{% endmacro %}
+
+{% macro transitions_table(items) %}
+{% if items %}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Service</th><th scope="col">Change</th><th scope="col">State</th><th scope="col">Observed</th></tr></thead>
+  <tbody>{% for t in items %}
+  <tr><td>{{ t.timestamp|display_time }}</td>
+    <td><a href="{{ url_for('dashboard.service_detail', service_id=t.service_id) }}">{{ t.service_name }}</a></td>
+    <td><strong>{{ TRANSITION_LABELS[t.kind] }}</strong></td>
+    <td>{{ t['from']|title }} &rarr; {{ t.to|title }}</td>
+    <td>{{ t.failure_label or 'Healthy response' }}{% if t.status_code is not none %} (HTTP {{ t.status_code }}){% endif %}</td></tr>
+  {% endfor %}</tbody></table></div>
+<p class="muted">Changes between consecutive stored checks. Incidents follow the engine's multi-check rules, so a single-check change does not necessarily open or close an incident.</p>
+{% else %}{{ empty('No health-state changes recorded in this period.') }}{% endif %}
+{% endmacro %}
+
+{% macro services_table(items, detailed=false) %}
+{% if items %}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Service</th><th scope="col">Role</th><th scope="col">State</th><th scope="col">HTTP</th><th scope="col">Response time</th><th scope="col">Last check (UTC)</th><th scope="col">Last healthy (UTC)</th>{% if detailed %}<th scope="col">Success rate 24 h</th>{% endif %}<th scope="col">Latest error</th><th scope="col">Open incidents</th></tr></thead>
+  <tbody>
+  {% for s in items %}
+  <tr>
+    <td><a href="{{ url_for('dashboard.service_detail', service_id=s.service_id) }}"><strong>{{ s.name }}</strong></a><br><span class="muted">{{ s.url }}</span></td>
+    <td>{{ s.role_label }}</td>
+    <td>{{ badge(s.state) }}
+      {% if s.awaiting_first_check %}<br><span class="muted">awaiting first check</span>{% endif %}
+      {% if s.state == 'STALE' and s.last_known_health %}<br><span class="muted">last recorded: {{ s.last_known_health|lower }}</span>{% endif %}
+      {% if s.failure_label and s.state != 'STALE' %}<br><span class="muted">{{ s.failure_label }}</span>{% endif %}</td>
+    <td>{{ s.status_code if s.status_code is not none else ('no response' if s.last_check_at else '—') }}</td>
+    <td>{{ ('%.3f s' % s.response_time_seconds) if s.response_time_seconds is not none else '—' }}</td>
+    <td>{{ s.last_check_at|display_time }}</td>
+    <td>{{ s.last_healthy_at|display_time }}</td>
+    {% if detailed %}<td>{% if s.availability_24h is not none %}{{ s.availability_24h }}% <span class="muted">({{ s.checks_24h }} checks)</span>{% else %}—{% endif %}</td>{% endif %}
+    <td class="wrap">{{ s.error or '—' }}</td>
+    <td>{{ s.open_incidents }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}{{ empty('No services to display.') }}{% endif %}
+{% endmacro %}
+
+{% macro diagnosis_card(title, diag, caveat=none) %}
+<div class="diag">
+  <h3>{{ title }}</h3>
+  {% if diag %}
+  <p class="muted">Check recorded {{ diag.checked_at|display_time }}{% if caveat %} &middot; {{ caveat }}{% endif %}<br>Diagnosis {{ diag.source }}.{% if diag.failure_type %} Failure type: <strong>{{ FAILURE_TYPE_LABELS[diag.failure_type] }}</strong>.{% endif %}</p>
+  <h4>Observed facts <span class="tag tag--fact">from stored record</span></h4>
+  <ul>{% for line in diag.observed %}<li>{{ line }}</li>{% endfor %}</ul>
+  <h4>Diagnosis</h4><p><strong>{{ diag.diagnosis }}</strong></p>
+  <h4>Likely cause <span class="tag tag--infer">inferred, not confirmed</span></h4><p>{{ diag.likely_cause }}</p>
+  <h4>Recommended action</h4><p>{{ diag.recommendation }}</p>
+  {% else %}<p class="muted">No record available.</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro freshness(summary) %}
+<p class="freshness">Data status: <strong>{{ summary.data_status|replace('_', ' ')|title }}</strong> &middot; latest recorded check: <strong>{{ summary.latest_check_at|display_time }}</strong> &middot; generated {{ summary.generated_at|display_time }}</p>
+{% if summary.notices %}<ul class="notices" aria-live="polite">{% for n in summary.notices %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+{% endmacro %}
+
+{% macro select(name, label, options, current, any_label='Any') %}
+<label>{{ label }}
+  <select name="{{ name }}"><option value="">{{ any_label }}</option>
+  {% for opt in options %}
+    {% set value = opt if opt is string else opt[0] %}
+    {% set text = (opt.replace('_', ' ')|title) if opt is string else opt[1] %}
+    <option value="{{ value }}" {% if current|string|upper == value|string|upper %}selected{% endif %}>{{ text }}</option>
+  {% endfor %}</select>
+</label>
+{% endmacro %}

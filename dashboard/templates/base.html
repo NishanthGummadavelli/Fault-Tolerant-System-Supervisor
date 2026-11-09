@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Overview{% endblock %} · Fault-Tolerant System Supervisor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  {% set active = {'dashboard.service_detail': 'dashboard.services', 'dashboard.incident_detail': 'dashboard.incidents'}.get(request.endpoint, request.endpoint) %}
+  <div class="shell">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">FT</span>
+        <span class="brand-name">System Supervisor</span>
+      </div>
+      <nav>
+        {% for endpoint, label in NAV %}
+        <a href="{{ url_for(endpoint) }}" {% if endpoint == active %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+      <p class="sidebar-foot">Team CodeCrafters<br>Read-only dashboard</p>
+    </aside>
+    <main id="main" class="content">
+      {% block header %}{% endblock %}
+      {% if refresh_seconds %}
+      <div class="refresh-bar">
+        <span id="refresh-status" role="status" aria-live="polite">Auto-refresh every {{ refresh_seconds }} s</span>
+        <span>Page last refreshed: <strong id="last-refresh">on load</strong></span>
+        <button type="button" id="refresh-btn" class="btn btn--small">Refresh now</button>
+      </div>
+      <div id="refresh-alert" class="alert alert--error" role="alert" hidden></div>
+      {% endif %}
+      <div id="live-region" data-refresh-seconds="{{ refresh_seconds }}">
+        {% block live %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

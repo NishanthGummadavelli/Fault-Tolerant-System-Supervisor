@@ -1,0 +1,38 @@
+{% extends layout %}
+{% from "_macros.html" import page_header, freshness, empty %}
+{% block title %}Settings{% endblock %}
+{% block header %}{{ page_header('Settings and configuration', 'Monitoring data status and dashboard configuration. Values are shown read-only; secrets are never displayed.') }}{% endblock %}
+{% block live %}
+{{ freshness(summary) }}
+<section class="grid grid--two">
+  <div class="card"><h2>Monitoring data</h2>
+    <dl class="facts">
+      <dt>Database</dt><dd>{{ 'Found and readable' if info.available else 'Not available' }}</dd>
+      <dt>First recorded check</dt><dd>{{ info.first_check_at|display_time }}</dd>
+      <dt>Latest recorded check</dt><dd>{{ info.last_check_at|display_time }}</dd>
+      {% for table, n in info.counts.items() %}<dt>{{ table|replace('_', ' ')|title }}</dt><dd>{{ n }} record(s)</dd>{% endfor %}
+    </dl>
+    <p class="muted">The dashboard cannot tell whether the supervisor process is running; it can only report how recent the stored checks are.</p></div>
+  <div class="card"><h2>Dashboard configuration</h2>
+    <dl class="facts">
+      <dt>Browser refresh interval</dt><dd>{{ config.refresh_seconds }} s (reads stored data; never runs a check)</dd>
+      <dt>Stale after</dt><dd>{{ config.stale_multiplier }} &times; service interval + request timeout</dd>
+      <dt>Incident detection (manager defaults)</dt><dd>{{ rules.degraded_limit }} degraded checks open a warning; {{ rules.failure_limit }} availability failures open a critical incident; {{ rules.recovery_limit }} healthy checks resolve.</dd>
+    </dl></div>
+</section>
+<section class="grid grid--two">
+  <div class="card"><h2>Application status roles</h2>
+    <p class="muted">Application status distinguishes the load balancer from backend servers. A role comes from <code>DASHBOARD_SERVICE_ROLES</code> if set, otherwise it is inferred from the service name.</p>
+    <dl class="facts">{% for s in summary.services %}<dt>{{ s.name }}</dt><dd>{{ s.role_label }} <span class="muted">({{ s.role_source }})</span></dd>{% else %}<dt>—</dt><dd>No services</dd>{% endfor %}</dl>
+    <p class="muted">Example: <code>DASHBOARD_SERVICE_ROLES="Backend Server 1=backend;Backend Server 2=backend;Application Load Balancer=alb"</code></p></div>
+  <div class="card"><h2>Adding services</h2>
+    <p>Registration from the browser is <strong>{{ 'enabled' if config.registration_enabled else 'disabled' }}</strong>.</p>
+    {% if not config.registration_enabled %}<p class="muted">It is enabled only when <code>DASHBOARD_ALLOW_REGISTRATION=1</code> <em>and</em> <code>DASHBOARD_ADMIN_TOKEN</code> are both set{% if config.allow_registration and not config.admin_token %} (registration is allowed but no token is set, so it stays disabled){% endif %}.</p>{% else %}<p class="muted">A running supervisor starts monitoring a newly registered service at the beginning of its next cycle. Maximum services: {{ config.max_services }}.</p>{% endif %}
+    <p class="muted">Services can always be added with <code>--target "NAME=URL"</code> when starting the supervisor.</p></div>
+</section>
+<section class="card"><h2>Application availability definition</h2><p>{{ application.availability.formula }}.</p></section>
+<section class="card"><h2>Monitored services</h2>
+{% if summary.services %}<div class="table-wrap"><table><thead><tr><th scope="col">Service</th><th scope="col">Endpoint</th><th scope="col">Interval</th><th scope="col">Healthy below</th><th scope="col">Unhealthy at or above</th><th scope="col">Stale after</th></tr></thead><tbody>
+{% for s in summary.services %}<tr><td>{{ s.name }}</td><td>{{ s.url }}</td><td>{{ s.interval_seconds }} s</td><td>{{ s.healthy_threshold_seconds }} s</td><td>{{ s.unhealthy_threshold_seconds }} s</td><td>{{ s.stale_after_seconds|round|int }} s</td></tr>{% endfor %}
+</tbody></table></div>{% else %}{{ empty('No services registered.') }}{% endif %}</section>
+{% endblock %}

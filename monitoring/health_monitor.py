@@ -169,6 +169,9 @@ def check_server(config: MonitoringConfig) -> HealthCheckResult:
 
         if isinstance(reason, (TimeoutError, socket.timeout)):
             error_type = "timeout"
+        elif isinstance(reason, socket.gaierror):
+            # The hostname could not be resolved to an IP address.
+            error_type = "dns_failure"
         elif isinstance(reason, ConnectionRefusedError):
             error_type = "connection_refused"
         elif isinstance(reason, OSError) and reason.errno == 111:
@@ -180,7 +183,9 @@ def check_server(config: MonitoringConfig) -> HealthCheckResult:
     except OSError as error:
         error_message = str(error)
 
-        if isinstance(error, ConnectionRefusedError):
+        if isinstance(error, socket.gaierror):
+            error_type = "dns_failure"
+        elif isinstance(error, ConnectionRefusedError):
             error_type = "connection_refused"
         elif isinstance(error, (TimeoutError, socket.timeout)):
             error_type = "timeout"
@@ -242,6 +247,19 @@ def diagnose_health(
                 "Verify that Apache or the application is running and "
                 "listening on the expected port. Check the EC2 security "
                 "group and host firewall."
+            ),
+        )
+
+    if result.error_type == "dns_failure":
+        return DiagnosisResult(
+            diagnosis="DNS resolution failure",
+            likely_cause=(
+                "The hostname could not be resolved to an IP address."
+            ),
+            recommendation=(
+                "Verify the hostname in the configured URL, the DNS "
+                "settings of the monitoring host, and that the load "
+                "balancer or instance DNS name still exists."
             ),
         )
 

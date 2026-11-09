@@ -1,0 +1,19 @@
+{% extends layout %}
+{% from "_macros.html" import page_header, diagnosis_card, badge, freshness, empty %}
+{% block title %}Diagnosis{% endblock %}
+{% block header %}{{ page_header('Diagnostics', 'Observed facts are separated from inferred causes. Diagnoses come from the monitoring engine\'s own diagnosis logic, not a second rule set.') }}{% endblock %}
+{% block live %}
+{{ freshness(summary) }}
+<section class="card"><h2>Failure types the monitor distinguishes</h2><p class="muted">Each stored failure is classified from its recorded error type and HTTP status. These are observations; the likely cause shown with a diagnosis is an inference.</p><ul class="legend legend--wide">{% for key, label in FAILURE_TYPE_LABELS.items() %}<li>{{ label }}</li>{% endfor %}</ul></section>
+<section class="card"><h2>Observations</h2>
+  {% if insights %}<ul class="insights">{% for i in insights %}<li class="insight insight--{{ i.tone }}"><strong>{{ i.title }}</strong><br><span>{{ i.evidence }}</span></li>{% endfor %}</ul>
+  {% else %}{{ empty('No observations yet.') }}{% endif %}</section>
+{% for item in diagnoses %}
+<section class="card"><h2><a href="{{ url_for('dashboard.service_detail', service_id=item.service.service_id) }}">{{ item.service.name }}</a> <span class="muted">{{ item.service.role_label }}</span> {{ badge(item.service.state) }}</h2>
+  {% if item.open_incident_ids %}<p>Open incidents: {% for iid in item.open_incident_ids %}<a href="{{ url_for('dashboard.incident_detail', incident_id=iid) }}">{{ iid }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  <div class="grid grid--two">
+    {{ diagnosis_card('Latest check', item.latest, 'not current health' if item.service.state == 'STALE' else none) }}
+    {{ diagnosis_card('Most recent problem', item.problem) }}
+  </div></section>
+{% else %}<section class="card">{{ empty('No services to diagnose yet.') }}</section>{% endfor %}
+{% endblock %}
