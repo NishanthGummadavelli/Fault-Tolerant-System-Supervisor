@@ -1,306 +1,665 @@
 # Fault-Tolerant System Supervisor
 
-## Team CodeCrafters
+```{=html}
+<p align="center">
+```
+`<strong>`{=html}Cloud Computing Project \| Team
+CodeCrafters`</strong>`{=html}`<br>`{=html} Monitoring · Failure
+Detection · Load Balancing · Incident Recovery
+```{=html}
+</p>
+```
+```{=html}
+<p align="center">
+```
+`<img alt="AWS" src="https://img.shields.io/badge/Cloud-AWS-orange">`{=html}
+`<img alt="Python" src="https://img.shields.io/badge/Python-3.12-blue">`{=html}
+`<img alt="Dashboard" src="https://img.shields.io/badge/Dashboard-Flask-black">`{=html}
+`<img alt="Database" src="https://img.shields.io/badge/Database-SQLite-lightgrey">`{=html}
+`<img alt="Status" src="https://img.shields.io/badge/Status-Implemented%20%26%20Tested-success">`{=html}
+```{=html}
+</p>
+```
+A cloud-based fault-tolerance demonstration deployed on **Amazon Web
+Services (AWS)**. The project monitors backend health, detects service
+failures, records incidents and recovery, and presents infrastructure
+information through a Flask dashboard.
 
-A cloud-based fault-tolerant system designed to monitor application
-health, detect infrastructure failures, and maintain application
-availability using AWS cloud services.
+------------------------------------------------------------------------
 
-## Project Objective
+## Contents
 
-The objective of this project is to design and implement a cloud-based
-system that can monitor application infrastructure, detect unhealthy
-resources, distribute traffic across healthy resources, and recover
-from failures with minimal service interruption.
+-   [Project overview](#project-overview)
+-   [Objectives](#objectives)
+-   [Implemented architecture](#implemented-architecture)
+-   [AWS infrastructure](#aws-infrastructure)
+-   [Technology stack](#technology-stack)
+-   [How it works](#how-it-works)
+-   [Monitoring and incident
+    lifecycle](#monitoring-and-incident-lifecycle)
+-   [Dashboard](#dashboard)
+-   [Repository structure](#repository-structure)
+-   [Run on AWS](#run-on-aws)
+-   [Configuration](#configuration)
+-   [Failure and recovery
+    demonstration](#failure-and-recovery-demonstration)
+-   [Verification results](#verification-results)
+-   [Security and operational notes](#security-and-operational-notes)
+-   [Scope and limitations](#scope-and-limitations)
+-   [Automated tests](#automated-tests)
+-   [Team](#team)
 
-## Target Architecture
+------------------------------------------------------------------------
 
-The planned system will use AWS cloud services and infrastructure
-components including:
+## Project overview
 
-- Amazon VPC
-- Amazon EC2
-- Application Load Balancer
-- Auto Scaling
-- Amazon CloudWatch
-- Amazon RDS
+The **Fault-Tolerant System Supervisor** combines an AWS-hosted
+application environment with an independent monitoring process.
 
-## Development Approach
+The application is hosted on two backend EC2 instances. An **Application
+Load Balancer (ALB)** distributes incoming application requests across
+registered backends and performs target health checks.
 
-The project will be developed incrementally.
+A separate Supervisor EC2 instance runs the Python monitoring process.
+It checks backend endpoints, classifies their health, stores results in
+SQLite, and manages incident records. A Flask dashboard reads this
+information and displays infrastructure status, health history, response
+times, and incidents.
 
-### Phase 1 — Project Foundation
+The supervisor observes and records infrastructure health. **It does not
+automatically stop, start, replace EC2 instances, or modify ALB target
+registrations.** Traffic distribution and target health routing are
+handled by the AWS Application Load Balancer.
 
-- Project repository
-- Git/GitHub integration
-- Project structure
-- Documentation
+## Objectives
 
-### Phase 2 — Cloud Foundation
+-   Monitor multiple backend endpoints independently.
+-   Detect unavailable, slow, and unhealthy services.
+-   Persist timestamped health checks and diagnostic information.
+-   Track incidents without creating duplicate incidents for repeated
+    failures.
+-   Confirm recovery after consecutive successful checks.
+-   Distribute application traffic across backend instances using an
+    ALB.
+-   Provide a dashboard for infrastructure health, monitoring history,
+    and incident visibility.
+-   Demonstrate continued application availability when one backend
+    becomes unavailable and another healthy target remains.
 
-- AWS networking
-- VPC
-- Subnets
-- Route tables
-- Security groups
-- EC2
+## Implemented architecture
 
-### Phase 3 — Fault-Tolerance Infrastructure
+``` mermaid
+flowchart TB
+    U[User / Browser] --> ALB[Application Load Balancer]
+    ALB --> B1[Backend EC2 01<br/>Apache + CloudApp]
+    ALB --> B2[Backend EC2 02<br/>Apache + CloudApp]
 
-- Multiple EC2 instances
-- Application Load Balancer
-- Health checks
-- Auto Scaling
-- CloudWatch monitoring
-
-### Phase 4 — Application Integration
-
-- Application deployment
-- Database integration
-- Health/status information
-- Monitoring integration
-
-### Phase 5 — Failure and Recovery Demonstration
-
-- Simulate instance failure
-- Detect unhealthy instance
-- Redirect traffic
-- Replace failed instance
-- Verify application availability
-
-## Project Status
-
-The multi-target monitoring core, SQLite health-history and diagnosis persistence,
-incident lifecycle tracking and the Flask dashboard are implemented and covered by
-automated tests (see "Tests" below). The end-to-end check against the real AWS backends
-and ALB has **not** been performed; it needs the actual reachable endpoints. The dashboard
-layout has been verified through rendered HTML and automated tests, not yet by eye in a browser.
-
-## Independent Multi-Target Monitoring
-
-The supervisor can monitor the two EC2 backends and the Application Load Balancer
-in the same cycle. The ALB remains responsible for traffic routing; the supervisor
-observes health, stores check evidence and diagnosis in SQLite, and manages incidents.
-It does not stop/restart EC2 instances or change ALB target registrations.
-
-### Configure targets
-
-Run from the repository root. Replace the example URLs with the actual reachable
-backend URLs or private IP URLs when the supervisor runs inside the VPC:
-
-```bash
-python -m monitoring.supervisor --interval 10 \
-  --target "Backend Server 1=http://BACKEND_1_HOST/" \
-  --target "Backend Server 2=http://BACKEND_2_HOST/" \
-  --target "Application Load Balancer=http://YOUR_ALB_DNS_NAME/"
+    subgraph VPC[AWS VPC]
+        ALB
+        B1
+        B2
+        S[Supervisor EC2<br/>Python Monitoring Process]
+        D[(SQLite Database)]
+        F[Flask Monitoring Dashboard]
+        S -->|HTTP health checks| B1
+        S -->|HTTP health checks| B2
+        S -->|Persist checks and incidents| D
+        F -->|Read-only queries| D
+    end
 ```
 
-The `--target` option can be repeated. If no `--target` is supplied, the original
-`--url` and `--name` single-target mode remains available:
+### Monitoring flow
 
-```bash
-python -m monitoring.supervisor --url http://127.0.0.1:8000/ \
-  --name "Local Test Service" --interval 10
+1.  The supervisor sends HTTP requests to each configured backend
+    endpoint.
+2.  Each response is classified as `HEALTHY`, `DEGRADED`, or
+    `UNHEALTHY`.
+3.  The check result and diagnostic details are stored in SQLite.
+4.  Repeated failures are associated with an incident.
+5.  Consecutive successful checks confirm recovery and resolve the
+    incident.
+6.  The Flask dashboard reads the database and displays the recorded
+    information.
+
+> The dashboard does not perform health checks. It only displays data
+> written by the supervisor. When monitoring is stopped, historical
+> records remain available and eventually become stale.
+
+## AWS infrastructure
+
+The current deployment uses these AWS components:
+
+  -----------------------------------------------------------------------
+  Component                           Purpose
+  ----------------------------------- -----------------------------------
+  Amazon VPC                          Isolated network for project
+                                      resources
+
+  Public and private subnets          Network segmentation
+
+  Internet Gateway and route tables   Internet connectivity where
+                                      required
+
+  Security Groups                     Network access control
+
+  Supervisor EC2                      Runs Python monitoring and Flask
+                                      dashboard
+
+  Backend EC2 01                      Hosts CloudApp using Apache
+
+  Backend EC2 02                      Hosts CloudApp using Apache
+
+  Application Load Balancer           Distributes application traffic and
+                                      checks target health
+
+  SQLite                              Stores service registrations,
+                                      health checks, incidents, and
+                                      incident events
+  -----------------------------------------------------------------------
+
+### Current deployment endpoints
+
+These are the environment-specific values used in the current
+deployment. They may change if the infrastructure is recreated.
+
+  -------------------------------------------------------------------------------------------------
+  Resource                            Current endpoint
+  ----------------------------------- -------------------------------------------------------------
+  Supervisor EC2 private IP           `10.0.11.82`
+
+  Backend EC2 01 private IP           `10.0.9.129`
+
+  Backend EC2 02 private IP           `10.0.20.10`
+
+  Application Load Balancer           `fts-application-alb-858756406.us-east-1.elb.amazonaws.com`
+  -------------------------------------------------------------------------------------------------
+
+The supervisor runs inside the VPC and reaches the backends using their
+private IP addresses. Users access CloudApp through the ALB DNS name.
+
+## Technology stack
+
+  -----------------------------------------------------------------------
+  Layer                               Technologies
+  ----------------------------------- -----------------------------------
+  Cloud platform                      AWS
+
+  Compute                             Amazon EC2
+
+  Networking                          VPC, subnets, route tables,
+                                      Internet Gateway, Security Groups
+
+  Traffic distribution                Application Load Balancer
+
+  Web server                          Apache HTTP Server
+
+  Application                         HTML and CSS (CloudApp static
+                                      demonstration site)
+
+  Monitoring                          Python, HTTP health checks
+
+  Dashboard                           Flask, HTML, CSS, JavaScript
+
+  Database                            SQLite
+
+  Version control                     Git and GitHub
+  -----------------------------------------------------------------------
+
+**Scope clarification:** Auto Scaling, Amazon CloudWatch, and Amazon RDS
+appeared in the initial target architecture but are not part of the
+currently verified implementation described here. The current monitoring
+and incident database uses SQLite on the Supervisor EC2 instance.
+
+## How it works
+
+### Application traffic
+
+-   A user opens CloudApp through the ALB DNS name.
+-   The ALB forwards requests to healthy registered backend targets.
+-   Both backend EC2 instances serve the CloudApp page using Apache.
+-   Each backend has its own page identity, helping identify which
+    backend served a response.
+
+Both backend instances contain the shared CSS asset. This is
+intentional: the browser may request HTML and CSS separately, and the
+ALB can route those requests independently.
+
+### Independent health monitoring
+
+The supervisor monitors the two backend private IP endpoints directly.
+It records the HTTP status, response time, health classification,
+timestamp, and available diagnostic information.
+
+### Data persistence
+
+Monitoring data is stored in:
+
+``` text
+data/fault_tolerant_supervisor.db
 ```
 
-Each target is registered as a separate service in the existing SQLite database.
-Every check stores its timestamp, health status, HTTP status, response time, error
-classification, diagnosis, likely cause, and recommended action. Older databases are
-migrated automatically by adding the three nullable diagnosis columns; existing rows
-and the existing four-table layout are retained.
+The database contains service registrations, health checks, incidents,
+and incident event history. The dashboard opens the database in
+read-only query mode.
+
+### Dashboard updates
+
+The Flask dashboard periodically refreshes its displayed data. The
+default browser refresh interval is 10 seconds. Refreshing reads stored
+information; it does not trigger a new backend health check.
+
+## Monitoring and incident lifecycle
+
+### Health states
+
+  -----------------------------------------------------------------------
+  State                               Meaning
+  ----------------------------------- -----------------------------------
+  `HEALTHY`                           Successful HTTP response within the
+                                      healthy response-time threshold
+
+  `DEGRADED`                          Successful response, but response
+                                      time is elevated
+
+  `UNHEALTHY`                         Endpoint is unavailable, returns an
+                                      unsuccessful HTTP status, or
+                                      exceeds the unhealthy response-time
+                                      threshold
+
+  `STALE` (dashboard state)           Latest recorded check is too old to
+                                      represent current health
+
+  `NO_DATA` (dashboard state)         No health check has been recorded
+                                      for the service
+  -----------------------------------------------------------------------
+
+`STALE` and `NO_DATA` are dashboard presentation states, not health
+states written by the supervisor.
 
 ### Incident lifecycle
 
-- Repeated availability failures open a critical incident.
-- Sustained elevated latency opens a warning; persistent severe latency can escalate it.
-- Further matching failures update the same open incident and increase its occurrence count.
-- Two consecutive healthy checks confirm recovery and resolve open incidents.
-- Creation, updates, escalation, and resolution are recorded in `incident_events`.
+-   Repeated availability failures open a critical incident.
+-   Elevated latency can open a warning incident; persistent severe
+    latency can escalate it.
+-   Further matching failures update the existing incident and increase
+    its occurrence count.
+-   Two consecutive healthy checks confirm recovery and resolve the open
+    incident.
+-   Creation, updates, escalation, and resolution are recorded in
+    `incident_events`.
 
-### Network requirements
+### Diagnostic information
 
-The supervisor must be able to reach each configured URL. If it runs on an EC2 instance
-inside the VPC, use backend private IPs/URLs and ensure security-group rules allow the
-supervisor to reach Apache on port 80. The ALB URL should be the DNS name assigned by AWS.
-Do not expose the local Flask dashboard publicly without adding suitable authentication
-and network access controls.
+The monitor records evidence and a best-effort diagnosis, including:
 
-### Diagnosis categories
+-   Request timeout
+-   Connection refused
+-   DNS resolution failure
+-   Connection failure
+-   HTTP client error (4xx)
+-   HTTP server error (5xx)
+-   Elevated or excessive response latency
 
-The monitor records evidence and a best-effort diagnosis for each check:
-
-- **Request timeout** — the endpoint did not respond before the configured timeout.
-- **Connection refused** — the destination did not accept the connection; verify Apache/application status and port rules.
-- **Connection failure** — likely DNS, routing, security-group, firewall, or endpoint configuration issue.
-- **HTTP client/request error (4xx)** — inspect the URL, resource path, and access rules.
-- **HTTP server error (5xx)** — inspect Apache/application logs and server dependencies.
-- **Elevated/excessive response latency** — investigate load, processing time, and network latency.
-
-These are likely causes inferred from the observed response, not proof of the underlying infrastructure fault.
-
-### Failure classification
-
-Besides the categories above, a hostname that cannot be resolved is now recorded as
-`dns_failure` and diagnosed as "DNS resolution failure". The monitor cannot reliably tell a
-connect timeout from a read timeout, so both appear as "Request timeout".
+These diagnoses are likely causes inferred from the observed response,
+not definitive proof of the underlying infrastructure fault.
 
 ## Dashboard
 
-A read-only Flask dashboard in `dashboard/` presents what the supervisor has stored in SQLite. It
-never runs health checks, never starts the supervisor, and opens the database with `query_only`.
+The Flask dashboard is in `dashboard/`. It reads monitoring records from
+the shared SQLite database and does not start or control the supervisor.
 
-| Page | Contents |
-|---|---|
-| Overview | Application-status banner; one card per monitored target (load balancer first, then backends, then others) with status, endpoint, HTTP status, response time, last checked, last successful, data freshness and latest diagnosis; summary metrics; charts; insights; failures and recoveries; recent checks and incidents |
-| Services | Search, state filter, sorting, pagination; role, state and open incidents; per-service detail; optional Add Service form |
-| Health history | Filters (service, state, failure type, HTTP status, error type, time range), pagination, response-time, state-count and availability charts, failure/recovery timeline |
-| Incidents | Filters (status, severity, category, service, time range, dates, text), latest observed failure, event count and duration; detail page with lifecycle timeline, evidence, rules and diagnosis |
-| Diagnostics | Per-service diagnosis, observed facts separated from inferred causes |
-| Event history | Recorded incident lifecycle events |
-| Settings | Data status, record counts, role mapping, registration status, per-service settings |
+  -----------------------------------------------------------------------
+  Page                                Information displayed
+  ----------------------------------- -----------------------------------
+  Overview                            Infrastructure status, service
+                                      cards, health percentages, summary
+                                      metrics, charts, insights, recent
+                                      checks, and incidents
 
-### Application status (infrastructure view)
+  Services                            Registered services, status,
+                                      filtering, sorting, pagination, and
+                                      service details
 
-The banner combines the load balancer and backend states. Only *fresh* checks count as evidence:
-stale or never-checked targets are "unverified", never healthy. A healthy ALB response never proves
-that every backend is healthy.
+  Health history                      Recorded checks, health states,
+                                      response times, and failure
+                                      information
 
-| Evidence | Banner |
-|---|---|
-| ALB and all backends healthy | Application operational |
-| Some backends unhealthy, at least one healthy | Degraded redundancy (application may remain available) |
-| **All** backends unhealthy | **Application outage** (the ALB's own check is reported alongside) |
-| ALB check unhealthy | Application endpoint unavailable (from the supervisor's perspective) |
-| A backend or the ALB slow | Degraded performance |
-| Some targets without recent data | Partly unverified / endpoint unverified / at risk |
-| No recent data at all | Status stale |
-| Never checked or nothing registered | Status unknown |
-| No load balancer target configured | "Backends healthy", end-to-end availability not verified |
+  Incidents                           Incident status, severity,
+                                      category, occurrence count, and
+                                      lifecycle details
 
-Roles come from `DASHBOARD_SERVICE_ROLES` when set, otherwise from the service name ("load balancer"
-or "ALB" means load balancer; "backend" means backend server). Any other service is listed as a plain
-service, so additional targets appear without UI changes.
+  Diagnostics                         Observed failures and likely causes
 
-**Application availability** = HTTP 2xx checks / all checks in the last 24 hours, measured on the load
-balancer endpoint. Slow but successful responses count as available. With no load balancer target no
-number is shown. Per-service availability charts use the same formula over the selected range.
+  Event history                       Incident creation, updates, and
+                                      resolution events
 
-### Freshness
+  Settings                            Database status, service
+                                      information, role mapping, and
+                                      registration configuration
+  -----------------------------------------------------------------------
 
-A target is **stale** when its latest check is older than `DASHBOARD_STALE_MULTIPLIER x monitoring
-interval + request timeout` (default 3 x interval + timeout). Stale targets keep their last recorded state,
-labelled as such. The dashboard polls its own lightweight HTML endpoints every `DASHBOARD_REFRESH_SECONDS`
-(default 10); this is periodic polling of stored data, not live monitoring.
+### Infrastructure health percentage
 
-### Environment variables (no secrets in source control)
+The overview calculates health percentage for the two directly monitored
+backend services:
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `SUPERVISOR_DB_PATH` | engine default (`data/fault_tolerant_supervisor.db`) | Database the dashboard reads |
-| `DASHBOARD_REFRESH_SECONDS` | 10 (2 to 300) | Browser polling interval |
-| `DASHBOARD_STALE_MULTIPLIER` | 3.0 (1.5 to 100) | Staleness window |
-| `DASHBOARD_SERVICE_ROLES` | none | `Name=role;Name=role` with role `alb`, `backend` or `other` |
-| `DASHBOARD_ALLOW_REGISTRATION` | off | `1` allows the Add Service form (also needs the token) |
-| `DASHBOARD_ADMIN_TOKEN` | none | Required to register services; never displayed or logged |
-| `DASHBOARD_MAX_SERVICES` | 50 | Registration cap |
-
-### Run locally (development)
-
-```bash
-python -m pip install -r requirements-dashboard.txt
-
-# Terminal 1: supervisor (replace the example URLs)
-python -m monitoring.supervisor --interval 10 \
-  --target "Backend Server 1=http://BACKEND_1_HOST/" \
-  --target "Backend Server 2=http://BACKEND_2_HOST/" \
-  --target "Application Load Balancer=http://YOUR_ALB_DNS_NAME/"
-
-# Terminal 2: dashboard, bound to localhost (debug mode is off)
-flask --app "dashboard.app:create_app" run --host 127.0.0.1 --port 5000
+``` text
+Health percentage = (HEALTHY checks / All recorded checks) × 100
 ```
 
-Open http://127.0.0.1:5000/. Both processes use the same default database file, so no extra
-configuration is needed. Do not use `--debug` on a server and do not bind the dashboard to `0.0.0.0`
-unless access controls are in place: the dashboard has no login. Exposing it remotely requires at least
-a security group limited to your IP, or an SSH tunnel (`ssh -L 5000:127.0.0.1:5000 user@host`), and a
-production server such as gunicorn (`gunicorn --bind 127.0.0.1:8000 "dashboard.app:create_app()"`).
+The overall percentage uses the combined check counts of Backend Server
+1 and Backend Server 2 for the selected time range. This is a historical
+measurement for that range and should be considered alongside each
+service's current freshness state.
 
-### Configure Backend Server 1, Backend Server 2 and the ALB
+### Application status and freshness
 
-Pass the three URLs as `--target "NAME=URL"` as shown above. Use names containing "Backend" and
-"Load Balancer" (or set `DASHBOARD_SERVICE_ROLES`) so the dashboard knows each role. Each target is
-checked independently every cycle and has its own incidents.
+-   Fresh successful checks can be displayed as healthy.
+-   Old checks are labelled stale and are not treated as current health
+    evidence.
+-   Services that have never been checked are shown as having no data.
+-   A healthy ALB response alone does not prove that every backend is
+    healthy.
 
-### Add an additional service
+The default stale window is based on the monitoring interval, request
+timeout, and configured stale multiplier.
 
-*Safest way:* add another `--target "NAME=URL"` and restart the supervisor (one short gap in monitoring).
+## Repository structure
 
-*From the dashboard (optional):* set both variables before starting the dashboard, then use Services,
-"Add a service":
-
-```bash
-export DASHBOARD_ALLOW_REGISTRATION=1
-export DASHBOARD_ADMIN_TOKEN='choose-a-long-random-value'     # do not commit this
+``` text
+fault-tolerant-system-supervisor/
+│
+├── monitoring/
+│   ├── supervisor.py
+│   ├── health_monitor.py
+│   ├── incident_manager.py
+│   └── database_manager.py
+│
+├── dashboard/
+│   ├── app.py
+│   ├── config.py
+│   ├── routes.py
+│   ├── services.py
+│   ├── insights.py
+│   ├── registration.py
+│   ├── params.py
+│   ├── templates/
+│   └── static/
+│
+├── data/
+│   └── fault_tolerant_supervisor.db
+│
+├── tests/
+├── scripts/
+├── requirements-dashboard.txt
+└── README.md
 ```
 
-The form validates the name and URL (http/https only, no credentials, no link-local or metadata
-addresses), rejects duplicate names and endpoints, checks a CSRF token and the admin token, and writes the
-service to the database through `DatabaseManager`. **That only records it.** A supervisor running this
-version of the code starts monitoring a registered service at the beginning of its next cycle; the page
-shows it as "awaiting first check" until its first check appears. A supervisor started from older code
-will not pick it up until restarted. New services reuse the settings (interval, timeout, thresholds) of the
-first registered service, and the supervisor monitors them with its own shared settings. Only services
-registered from the dashboard are picked up this way; other rows in the database are never monitored
-automatically. There is no AWS auto-discovery.
+The database and local backup files are runtime data and should not be
+committed to the source repository.
 
-### Demonstrate individual failure, simultaneous failure and recovery
+## Run on AWS
 
-*Simulated, local, safe (tested):* the script runs the real supervisor against three local servers
-that behave like the ALB and two backends, writing to a separate database:
+Run the supervisor and dashboard on the **Supervisor EC2 instance**.
+Both backend EC2 instances must be running with Apache serving CloudApp.
 
-```bash
-python scripts/demo_infrastructure.py --database data/demo.db --interval 2
-SUPERVISOR_DB_PATH=data/demo.db flask --app "dashboard.app:create_app" run --port 5000   # second terminal
-```
+### Prerequisites
 
-Phases: normal; Server 1 stops (degraded redundancy, ALB still answers); Server 1 recovers; both backends
-fail (application outage, two incidents, one per backend, updated not duplicated); both recover (incidents
-resolve after two healthy checks). `scripts/demo_failure.py` is the earlier single-service demonstration.
+-   Python 3.12 or a compatible Python version.
+-   Repository available on the Supervisor EC2 instance.
+-   Project virtual environment and dependencies installed.
+-   Both backend EC2 instances running.
+-   Apache active on both backend instances.
+-   Network rules allowing the supervisor to reach backend HTTP port 80.
 
-*On AWS (not tested by this project's automated tests):* the supervisor never stops, starts or replaces
-instances. To demonstrate on the real environment, a team member stops the web server on one backend
-(for example `sudo systemctl stop httpd`), observes the dashboard, then stops it on the second, then starts
-both again. Do this only on resources you own; no dashboard control performs any of it.
+### 1. Connect to the Supervisor EC2 instance
 
-### Replace the old project with this version without losing data
-
-1. Stop the supervisor and dashboard. 2. Copy the database file (`data/fault_tolerant_supervisor.db`) and
-any local configuration somewhere safe. 3. Extract this ZIP over the project folder (or into a new
-folder and copy `data/` back); `data/` and `*.db` are git-ignored and are not in the ZIP, so nothing is
-overwritten. 4. `python -m pip install -r requirements-dashboard.txt`. 5. Start the supervisor: it
-adds the new `monitoring_source` column automatically (existing rows keep the value `supervisor`; no data
-is deleted). The dashboard also reads an un-migrated database correctly before that happens.
-
-## Tests
-
-```bash
-python -m pip install -r requirements-dashboard.txt
-python -m unittest discover -s tests -v
-```
-
-### Core tests only
+Use AWS Console → EC2 → Instances → `fts-supervisor-server-01` → Connect
+→ EC2 Instance Connect.
 
 From the repository root:
 
-```bash
-python -m unittest tests.test_database_manager tests.test_incident_manager tests.test_supervisor tests.test_stage45_integration tests.test_multi_target_supervisor tests.test_health_diagnosis -v
+``` bash
+cd ~/fault-tolerant-system-supervisor
+source .venv/bin/activate
 ```
 
-The core monitoring code uses the Python standard library. To run dashboard tests, first install the dashboard dependency:
+### 2. Start the Flask dashboard (Terminal 1)
 
-```bash
+Open one terminal session:
+
+``` bash
+cd ~/fault-tolerant-system-supervisor
+source .venv/bin/activate
+
+flask --app 'dashboard.app:create_app' run \
+  --host 127.0.0.1 \
+  --port 5000
+```
+
+This binds the dashboard to the Supervisor instance's localhost. It is
+suitable for local access, not a public production deployment.
+
+### 3. Start health monitoring (Terminal 2)
+
+Open a second terminal session on the same Supervisor EC2 instance:
+
+``` bash
+cd ~/fault-tolerant-system-supervisor
+source .venv/bin/activate
+
+python -m monitoring.supervisor \
+  --target "Backend Server 01=http://10.0.9.129/" \
+  --target "Backend Server 02=http://10.0.20.10/" \
+  --timeout 3 \
+  --interval 10 \
+  --healthy-threshold 0.5 \
+  --unhealthy-threshold 1.0
+```
+
+The supervisor checks both backends every 10 seconds and stores the
+results in the configured SQLite database.
+
+### 4. Stop the processes
+
+When the demonstration or monitoring session is complete:
+
+-   Press `Ctrl+C` in the health-monitoring terminal.
+-   Press `Ctrl+C` in the dashboard terminal.
+
+The EC2 instances and Apache services are independent of the
+browser-based Instance Connect sessions. Stop EC2 instances when they
+are no longer needed to avoid unnecessary running costs.
+
+## Configuration
+
+The supervisor accepts multiple targets using repeated `--target`
+arguments. The current AWS command monitors the two backend private IP
+endpoints directly.
+
+Dashboard environment variables:
+
+  --------------------------------------------------------------------------------
+  Variable                         Default                 Description
+  -------------------------------- ----------------------- -----------------------
+  `SUPERVISOR_DB_PATH`             Project database path   SQLite database read by
+                                                           the dashboard
+
+  `DASHBOARD_REFRESH_SECONDS`      `10`                    Browser refresh
+                                                           interval (2--300
+                                                           seconds)
+
+  `DASHBOARD_STALE_MULTIPLIER`     `3.0`                   Multiplier used to
+                                                           determine stale data
+
+  `DASHBOARD_SERVICE_ROLES`        None                    Optional service role
+                                                           mapping
+
+  `DASHBOARD_ALLOW_REGISTRATION`   Off                     Enables optional
+                                                           service registration
+                                                           when set to `1` and an
+                                                           admin token is
+                                                           configured
+
+  `DASHBOARD_ADMIN_TOKEN`          None                    Required for optional
+                                                           service registration
+
+  `DASHBOARD_MAX_SERVICES`         `50`                    Maximum service
+                                                           registration limit
+  --------------------------------------------------------------------------------
+
+Do not commit tokens, passwords, private keys, or other credentials to
+GitHub.
+
+## Failure and recovery demonstration
+
+The project has been tested with a controlled backend web-server
+failure.
+
+### Demonstration sequence
+
+1.  Confirm both backend targets are healthy.
+
+2.  Stop Apache on Backend Server 01:
+
+    ``` bash
+    sudo systemctl stop httpd
+    ```
+
+3.  Observe the supervisor reporting the backend as unhealthy and
+    recording the failure.
+
+4.  Observe the ALB target group marking Backend Server 01 unhealthy
+    after its configured health checks.
+
+5.  Open CloudApp through the ALB. With Backend Server 02 healthy, the
+    application continues to respond through the remaining healthy
+    target.
+
+6.  Restart Apache on Backend Server 01:
+
+    ``` bash
+    sudo systemctl start httpd
+    ```
+
+7.  Verify that Backend Server 01 returns HTTP 200 again.
+
+8.  Observe consecutive healthy checks and the incident recovery event.
+
+**Important:** Perform failure simulation only on project resources that
+your team owns. The supervisor detects and records failure; Apache
+recovery in this demonstration is performed manually.
+
+## Verification results
+
+The following results were observed during AWS integration and dashboard
+verification:
+
+  -----------------------------------------------------------------------
+  Verification                        Observed result
+  ----------------------------------- -----------------------------------
+  CloudApp on Backend EC2 01          Loaded successfully
+
+  CloudApp on Backend EC2 02          Loaded successfully
+
+  Application Load Balancer           Served CloudApp through a healthy
+                                      backend
+
+  Backend health monitoring           Both backends returned HTTP 200
+
+  Monitoring interval                 10 seconds
+
+  SQLite persistence                  New health-check records appeared
+                                      in the existing database
+
+  Dashboard endpoint                  Returned HTTP 200
+
+  Health percentage calculation       Correctly reflected checks for the
+                                      two monitored backends
+
+  Verified health percentage snapshot 100% overall (204 healthy / 204
+                                      total checks)
+
+  Backend 01 failure simulation       Connection failure detected; ALB
+                                      continued serving through Backend
+                                      02
+
+  Backend recovery                    Healthy checks recorded and the
+                                      earlier critical incident resolved
+
+  Incident event history              Creation, updates, and resolution
+                                      retained
+  -----------------------------------------------------------------------
+
+The 100% health percentage is a snapshot of checks recorded during the
+selected time range at verification time. It is not a guarantee of
+future availability.
+
+## Security and operational notes
+
+-   The supervisor should reach backend instances through private VPC
+    addresses.
+-   The ALB is the public application entry point; backend instances
+    should not require unrestricted public HTTP access.
+-   The Flask dashboard has no login in the current implementation. Do
+    not leave port `5000` open to the public internet.
+-   Restrict SSH access to trusted IP addresses.
+-   Temporary Security Group access may be enabled for the faculty
+    demonstration. After the demonstration, review and restrict all
+    inbound rules.
+-   Do not publish AWS credentials, private keys, access tokens, or
+    sensitive instance information in the repository.
+-   Stop unused EC2 instances and other billable resources when project
+    work is paused.
+
+## Scope and limitations
+
+-   The supervisor performs health monitoring, diagnosis, and incident
+    tracking; it does not automatically repair infrastructure.
+-   AWS ALB target health checks and routing operate independently of
+    the Python supervisor.
+-   The current supervisor command monitors the two backend EC2 private
+    IP endpoints directly. The dashboard may also contain older ALB and
+    probe registrations; these can appear stale if they are not actively
+    monitored.
+-   The dashboard displays stored data. Refreshing it does not generate
+    new health checks.
+-   The current database is SQLite on the Supervisor EC2 instance.
+    Amazon RDS is not used in the verified deployment.
+-   Auto Scaling and CloudWatch are not part of the current verified
+    implementation.
+
+## Automated tests
+
+From the repository root, activate the virtual environment and install
+dashboard dependencies if required:
+
+``` bash
 python -m pip install -r requirements-dashboard.txt
+```
+
+Run the test suite:
+
+``` bash
 python -m unittest discover -s tests -v
 ```
 
-The dashboard test command requires Flask to be installed in the active Python environment.
+Dashboard tests require Flask in the active Python environment.
+
+------------------------------------------------------------------------
+
+## Team
+
+**Team Name:** CodeCrafters\
+**Project:** Fault-Tolerant System Supervisor
+
+```{=html}
+<p align="center">
+```
+`<strong>`{=html}Built with Python and
+AWS`</strong>`{=html}`<br>`{=html} Monitoring infrastructure. Detecting
+failures. Observing recovery.
+```{=html}
+</p>
+```
+
